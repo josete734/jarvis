@@ -21,6 +21,11 @@ jobs:
       - name: Python syntax (compileall)
         run: python -m compileall -q services
 
+      - name: Security unit tests
+        run: |
+          pip install pytest aiohttp loguru
+          pytest services/orchestrator/tests -q
+
       - name: YAML configs valid
         run: |
           python - <<'EOF'
