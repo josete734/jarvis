@@ -12,10 +12,11 @@ verificado contra fuentes oficiales). Checklist por fases: [`docs/FASES.md`](doc
 
 ## Estado
 
-Esqueleto generado contra las APIs verificadas en jun-2026 (Pipecat 1.3.0,
-mem0 1.x, OpenVINO 2026.1…). **La primera ejecución en el M70q es la Fase 1**:
-los puntos que pueden requerir ajuste al contacto con hardware/librerías reales
-están marcados con `TODO(Fase N)` en el código.
+Esqueleto **verificado contra el código fuente real** de las librerías
+(Pipecat v1.3.0, openWakeWord v0.6.0, mem0 v1.0.11, ultralytics, insightface) —
+ver [`docs/VERIFICACION_APIS.md`](docs/VERIFICACION_APIS.md). Aún no ejecutado en
+hardware: **la primera ejecución en el M70q es la Fase 1**. Los puntos que solo
+se validan ejecutando quedan marcados como `TODO` en el código.
 
 ## Trabajar con Claude Code
 

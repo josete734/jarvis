@@ -34,11 +34,12 @@ Este archivo es tu contexto al abrir el proyecto. **Antes de tocar nada, lee
    el plan. El estudio y las investigaciones son contexto de fondo.
 2. **Trabaja fase a fase** siguiendo `docs/FASES.md`. No te adelantes; cada fase
    tiene criterios de éxito verificables. Marca el progreso ahí.
-3. **El código del esqueleto se escribió contra las APIs verificadas en
-   junio de 2026**, pero NO se ha ejecutado: lleva marcadores `TODO(Fase N)`.
-   La primera ejecución en el M70q es la Fase 1. Si una API real difiere de lo
-   asumido, **verifica en la documentación oficial antes de cambiar — no
-   inventes firmas ni nombres de módulos**.
+3. **El esqueleto se verificó contra el código fuente real** de las librerías
+   (Pipecat v1.3.0, openWakeWord v0.6.0, mem0 v1.0.11, ultralytics, insightface)
+   — ver `docs/VERIFICACION_APIS.md`. Aún NO se ha ejecutado en hardware: la
+   primera ejecución en el M70q es la Fase 1, y quedan `TODO` genuinos (los que
+   solo se validan ejecutando). Si una API real difiere, **verifica en la
+   doc/fuente oficial antes de cambiar — no inventes firmas ni nombres de módulos**.
 4. Al inicio de cada fase, **revisa las deprecations de Groq**
    (`console.groq.com/docs/deprecations`) y las notas de versión de Pipecat:
    el catálogo de modelos y la API rotan rápido.
