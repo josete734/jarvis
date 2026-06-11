@@ -11,8 +11,17 @@ import pytest
 
 from security_core import AFFIRMATIVE_RE, CONFIRM_TTL_SECS, SecurityState
 
-AFFIRMATIVE = ["sí", "si", "vale", "ok", "adelante", "hazlo", "claro que sí", "de acuerdo", "dale"]
+AFFIRMATIVE = ["sí", "vale", "ok", "adelante", "hazlo", "claro que sí", "de acuerdo", "dale"]
 NEGATIVE = ["no", "ni hablar", "para nada", "todavía no", "espera"]
+
+# Declinan PERO contienen un token afirmativo como subcadena. El regex puro las
+# matchearía; por eso la decisión real pasa por user_just_affirmed (guard de negación).
+EXPLOIT_NEGATIONS = [
+    "no, no lo hagas, no vale la pena",
+    "no lo confirmo todavía",
+    "déjalo, no procede ahora",
+    "ni se te ocurra, ok",
+]
 
 
 @pytest.mark.parametrize("text", AFFIRMATIVE)
@@ -23,6 +32,23 @@ def test_affirmative_phrases_match(text):
 @pytest.mark.parametrize("text", NEGATIVE)
 def test_negative_phrases_do_not_match(text):
     assert not AFFIRMATIVE_RE.search(text)
+
+
+@pytest.mark.parametrize("text", EXPLOIT_NEGATIONS)
+def test_negation_with_affirmative_token_does_not_authorize(text):
+    s = SecurityState()
+    called = []
+
+    async def execute(args):
+        called.append(args)
+        return {"ok": True}
+
+    s.on_user_transcription(text)
+    s.request_confirmation("crear_recordatorio", {"x": 1}, execute)
+    result = asyncio.run(s.try_execute_pending())
+
+    assert result["status"] == "denied"   # la negación gana sobre el token afirmativo
+    assert called == []
 
 
 def test_taint_set_and_cleared_on_new_user_turn():

@@ -7,4 +7,4 @@ After=jarvis.service
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/jarvis
-ExecStart=/usr/bin/docker compose run --rm reflection
+ExecStart=/usr/bin/docker compose run --rm -T reflection

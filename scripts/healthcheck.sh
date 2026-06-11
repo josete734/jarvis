@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Quick status sweep. Usage: bash scripts/healthcheck.sh
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 echo "==> containers"
 docker compose ps --format 'table {{.Name}}\t{{.State}}\t{{.Status}}'
@@ -20,4 +20,4 @@ curl -s -o /dev/null -w "http://127.0.0.1:8080/health -> %{http_code}\n" --max-t
 
 echo
 echo "==> disk"
-df -h / /var/lib/docker /srv/jarvis /mnt/backup 2>/dev/null | awk 'NR==1 || /\//'
+df -h / /var/lib/docker /srv/jarvis /mnt/backup 2>/dev/null | awk 'NR==1 || /\//' || true

@@ -6,9 +6,16 @@
 - GET  /health
 - Event log: /logs/events.db (SQLite). The panel reads it; the nightly
   reflection job consumes the day's transcripts from here.
+
+Auth: /event/presence and /dnd require the shared secret EVENTS_SECRET
+(header X-Jarvis-Events-Secret). Other containers on the compose network (n8n
+runs arbitrary workflow code) must not be able to toggle DND or trigger TTS.
+Fail-closed: if EVENTS_SECRET is unset, those endpoints are refused.
 """
 
+import hmac
 import json
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -19,6 +26,7 @@ from loguru import logger
 from pipecat.frames.frames import TTSSpeakFrame
 
 DB_PATH = Path("/logs/events.db")
+SECRET = os.getenv("EVENTS_SECRET", "")
 _conn: sqlite3.Connection | None = None
 
 
@@ -46,8 +54,20 @@ def log_event(kind: str, payload: dict) -> None:
         logger.warning(f"event log failed: {e}")
 
 
+def _authorized(request: web.Request) -> bool:
+    if not SECRET:
+        return False                       # fail-closed: sin secreto no se atiende
+    provided = request.headers.get("X-Jarvis-Events-Secret", "")
+    return hmac.compare_digest(provided, SECRET)
+
+
 async def start(task, security, *, port: int = 8070) -> None:
+    if not SECRET:
+        logger.warning("EVENTS_SECRET no definido: /dnd y /event/presence quedan deshabilitados")
+
     async def presence(request: web.Request) -> web.Response:
+        if not _authorized(request):
+            return web.json_response({"error": "unauthorized"}, status=401)
         data = await request.json()
         person = data.get("person", "alguien")
         log_event("presence", data)
@@ -58,6 +78,8 @@ async def start(task, security, *, port: int = 8070) -> None:
         return web.json_response({"status": "greeted"})
 
     async def dnd(request: web.Request) -> web.Response:
+        if not _authorized(request):
+            return web.json_response({"error": "unauthorized"}, status=401)
         data = await request.json()
         security.dnd = bool(data.get("enabled"))
         log_event("dnd", {"enabled": security.dnd})

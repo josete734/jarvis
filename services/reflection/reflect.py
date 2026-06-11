@@ -35,13 +35,15 @@ client = OpenAI(
 def todays_transcript() -> str:
     if not EVENTS_DB.exists():
         return ""
-    midnight = time.mktime(datetime.now().date().timetuple())
+    # Ventana de las últimas 24 h: el timer dispara a las 04:00, así que recortar por
+    # la medianoche del día en curso perdería todo lo hablado el día anterior.
+    since = time.time() - 86400
     conn = sqlite3.connect(EVENTS_DB)
     try:
         rows = conn.execute(
             "SELECT ts, kind, payload FROM events WHERE ts >= ? AND kind IN "
             "('user_said', 'assistant_said', 'presence') ORDER BY ts",
-            (midnight,),
+            (since,),
         ).fetchall()
     finally:
         conn.close()

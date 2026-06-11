@@ -4,7 +4,7 @@ Pipeline (PLAN_FINAL §3.1, position verified against pipecat v1.3.0 source):
 
     transport.input() -> WakeWordGate -> STT -> TranscriptWatcher
         -> [memory] -> user_aggregator(VAD + smart-turn default) -> LLM
-        -> TTS -> transport.output() -> assistant_aggregator
+        -> ConversationLog -> TTS -> transport.output() -> assistant_aggregator
 
 Smart-turn v3.2 (bundled, CPU, Spanish) is the DEFAULT stop strategy in 1.3.0:
 we keep stop_secs=0.2 and let the model decide end-of-turn.
@@ -42,6 +42,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 
 import events
+from conversation_log import ConversationLog
 from memory import build_memory_service
 from security import SecurityState, TranscriptWatcher
 from stt_factory import build_stt
@@ -100,7 +101,7 @@ async def main() -> None:
     )
 
     stt = build_stt()
-    watcher = TranscriptWatcher(security)
+    watcher = TranscriptWatcher(security, gate=gate)   # renueva el keepalive del gate al hablar
 
     llm = OpenAILLMService(
         api_key=os.getenv("LITELLM_API_KEY", "sk-litellm"),
@@ -138,6 +139,9 @@ async def main() -> None:
     processors += [
         aggregators.user(),
         llm,
+        # Vuelca 'assistant_said' a events.db para la reflexión nocturna
+        # (acumula LLMTextFrame entre LLMFullResponseStart/EndFrame).
+        ConversationLog(),
         tts,
         transport.output(),
         aggregators.assistant(),

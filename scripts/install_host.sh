@@ -9,15 +9,15 @@ REAL_USER="${SUDO_USER:-$USER}"
 echo "==> Packages"
 apt-get update
 apt-get install -y git curl htop sox espeak-ng alsa-utils v4l-utils \
-    zram-tools cpufrequtils ufw fail2ban unattended-upgrades
+    zram-tools cpufrequtils ufw fail2ban unattended-upgrades restic unzip
 
 echo "==> zram (50%, zstd) + 4 GB safety swapfile on NVMe"
 printf 'ALGO=zstd\nPERCENT=50\n' > /etc/default/zramswap
 systemctl restart zramswap || true
 if [ ! -f /swapfile ]; then
     fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
-    grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
+grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 sysctl -w vm.swappiness=10
 grep -q 'vm.swappiness' /etc/sysctl.d/99-jarvis.conf 2>/dev/null || \
     echo 'vm.swappiness=10' > /etc/sysctl.d/99-jarvis.conf
@@ -30,7 +30,13 @@ echo "==> Docker"
 if ! command -v docker >/dev/null; then
     curl -fsSL https://get.docker.com | sh
 fi
-usermod -aG docker,audio,video,render "$REAL_USER"
+for grp in docker audio video render; do
+    if getent group "$grp" >/dev/null; then
+        usermod -aG "$grp" "$REAL_USER"
+    else
+        echo "NOTE: group '$grp' not found — skipped (see render note below)"
+    fi
+done
 
 echo "==> Firewall + SSH hardening + fail2ban"
 ufw default deny incoming

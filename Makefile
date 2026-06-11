@@ -33,14 +33,14 @@ backup:
 	bash scripts/backup.sh
 
 reflection:
-	docker compose run --rm reflection
+	docker compose run --rm -T reflection
 
 # Fase 2-3: switch STT to parakeet (also set STT_BACKEND=openai in compose env)
 parakeet-on:
 	docker compose --profile stt-parakeet up -d
 
 parakeet-off:
-	docker compose --profile stt-parakeet down stt-parakeet
+	docker compose --profile stt-parakeet stop stt-parakeet
 
 health:
 	bash scripts/healthcheck.sh

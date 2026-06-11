@@ -22,8 +22,14 @@ E5_MODEL = "intfloat/multilingual-e5-small"
 
 
 def build_local_config() -> dict:
-    """mem0 OSS local config — syntax verified against docs.mem0.ai (jun-2026)."""
+    """mem0 OSS local config (verificado jun-2026 contra mem0 v1.0.11 + chromadb 1.5.9).
+
+    Chroma host/port usa el mismo code path interno que chromadb.HttpClient en el
+    cliente 1.5.9 (API v2) — requiere el pin chromadb==1.5.9 en requirements.
+    history_db_path persiste el estado local de mem0 en el volumen /data/mem0.
+    """
     return {
+        "history_db_path": os.path.join(os.getenv("MEM0_DIR", "/data/mem0"), "history.db"),
         "vector_store": {
             "provider": "chroma",
             "config": {"collection_name": "jarvis", "host": "chroma", "port": 8000},

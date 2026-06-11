@@ -6,32 +6,50 @@
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [0, 0],
+      "position": [
+        0,
+        0
+      ],
       "parameters": {
         "httpMethod": "POST",
         "path": "recordatorio",
         "responseMode": "responseNode",
-        "options": { "rawBody": true }
+        "options": {
+          "rawBody": true
+        }
       }
     },
     {
       "name": "Verify HMAC",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [220, 0],
+      "position": [
+        220,
+        0
+      ],
       "parameters": {
-        "jsCode": "const crypto = require('crypto');\nconst SECRET = $env.JARVIS_WEBHOOK_SECRET; // configure in n8n env/credentials\nconst headers = $input.first().json.headers || {};\nconst ts = headers['x-jarvis-timestamp'];\nconst sig = headers['x-jarvis-signature'] || '';\nconst raw = $input.first().binary?.data\n  ? Buffer.from($input.first().binary.data.data, 'base64').toString()\n  : JSON.stringify($input.first().json.body || {});\n\nlet valid = false;\nif (SECRET && ts && sig) {\n  const fresh = Math.abs(Date.now() / 1000 - Number(ts)) < 300; // 5 min window\n  const expected = crypto.createHmac('sha256', SECRET).update(`${ts}.${raw}`).digest('hex');\n  const a = Buffer.from(expected, 'hex');\n  const b = Buffer.from(sig, 'hex');\n  valid = fresh && a.length === b.length && crypto.timingSafeEqual(a, b);\n}\nreturn [{ json: { valid, payload: JSON.parse(raw || '{}') } }];"
+        "jsCode": "const crypto = require('crypto');\nconst SECRET = $env.JARVIS_WEBHOOK_SECRET; // configure in n8n env/credentials\nconst headers = $input.first().json.headers || {};\nconst ts = headers['x-jarvis-timestamp'];\nconst sig = headers['x-jarvis-signature'] || '';\nconst raw = $input.first().binary?.data\n  ? Buffer.from($input.first().binary.data.data, 'base64').toString()\n  : JSON.stringify($input.first().json.body || {});\n\nlet valid = false;\nif (SECRET && ts && sig) {\n  const fresh = Math.abs(Date.now() / 1000 - Number(ts)) < 300; // 5 min window\n  const expected = crypto.createHmac('sha256', SECRET).update(`${ts}.${raw}`).digest('hex');\n  const a = Buffer.from(expected, 'hex');\n  const b = Buffer.from(sig, 'hex');\n  valid = fresh && a.length === b.length && crypto.timingSafeEqual(a, b);\n}\n// Anti-replay: dedupe por request-id en staticData (ventana 5 min).\nconst reqId = headers['x-jarvis-request-id'];\nif (valid && reqId) {\n  const store = $getWorkflowStaticData('global');\n  const now = Date.now() / 1000;\n  store.seen = store.seen || {};\n  for (const k of Object.keys(store.seen)) { if (now - store.seen[k] > 300) delete store.seen[k]; }\n  if (store.seen[reqId]) { valid = false; } else { store.seen[reqId] = now; }\n}\nreturn [{ json: { valid, payload: JSON.parse(raw || '{}') } }];"
       }
     },
     {
       "name": "IF valid",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [440, 0],
+      "position": [
+        440,
+        0
+      ],
       "parameters": {
         "conditions": {
           "conditions": [
-            { "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true" } }
+            {
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
           ]
         }
       }
@@ -40,7 +58,10 @@
       "name": "TODO accion real",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [660, -80],
+      "position": [
+        660,
+        -80
+      ],
       "parameters": {},
       "notes": "Sustituir por la acción real (Todoist/Notion/Telegram/...) usando $json.payload.texto y $json.payload.fecha"
     },
@@ -48,7 +69,10 @@
       "name": "Respond OK",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [880, -80],
+      "position": [
+        880,
+        -80
+      ],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ { status: 'ok', mensaje: 'Recordatorio creado: ' + $json.payload.texto } }}"
@@ -58,23 +82,70 @@
       "name": "Respond 401",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [660, 120],
+      "position": [
+        660,
+        120
+      ],
       "parameters": {
         "respondWith": "json",
-        "options": { "responseCode": 401 },
+        "options": {
+          "responseCode": 401
+        },
         "responseBody": "={{ { status: 'error', mensaje: 'firma invalida' } }}"
       }
     }
   ],
   "connections": {
-    "Webhook": { "main": [[{ "node": "Verify HMAC", "type": "main", "index": 0 }]] },
-    "Verify HMAC": { "main": [[{ "node": "IF valid", "type": "main", "index": 0 }]] },
-    "IF valid": {
+    "Webhook": {
       "main": [
-        [{ "node": "TODO accion real", "type": "main", "index": 0 }],
-        [{ "node": "Respond 401", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Verify HMAC",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "TODO accion real": { "main": [[{ "node": "Respond OK", "type": "main", "index": 0 }]] }
+    "Verify HMAC": {
+      "main": [
+        [
+          {
+            "node": "IF valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF valid": {
+      "main": [
+        [
+          {
+            "node": "TODO accion real",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 401",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TODO accion real": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   }
 }

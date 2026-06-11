@@ -1,19 +1,19 @@
 """SSRF guard for web_read (PLAN_FINAL §9.1.3, per OWASP SSRF cheat sheet).
 
-Deny-by-default fetch: resolves ALL A/AAAA records and rejects private,
-loopback, link-local and reserved ranges (incl. 169.254.169.254 metadata)
-BEFORE connecting; redirects are followed manually re-validating each hop.
-
-Known residual: small DNS TOCTOU window between validation and connection
-(documented; v3 of the plan adds an egress-deny network layer on top).
+Deny-by-default fetch: rejects private, loopback, link-local and reserved ranges
+(incl. 169.254.169.254 metadata). The IP validation happens inside the aiohttp
+resolver (`_ValidatingResolver`), i.e. at the SAME point aiohttp resolves to
+connect — this closes the DNS-rebinding / TOCTOU window (a domain can't return a
+public IP at validation and a private one at connection). `_validate_url` is a
+cheap pre-check (scheme + literal-IP) kept for fast rejection and unit tests.
 """
 
-import asyncio
 import ipaddress
 import socket
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urljoin, urlparse
 
 import aiohttp
+from aiohttp.resolver import ThreadedResolver
 
 MAX_BYTES = 4 * 1024 * 1024          # 4 MB download cap
 MAX_REDIRECTS = 3
@@ -26,6 +26,18 @@ class BlockedURL(Exception):
     pass
 
 
+def _ip_blocked(ip_str: str) -> bool:
+    ip = ipaddress.ip_address(ip_str)
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
 def _validate_host(host: str) -> None:
     try:
         infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
@@ -34,16 +46,8 @@ def _validate_host(host: str) -> None:
     if not infos:
         raise BlockedURL(f"No addresses for {host}")
     for info in infos:
-        ip = ipaddress.ip_address(info[4][0])
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        ):
-            raise BlockedURL(f"{host} resolves to disallowed address {ip}")
+        if _ip_blocked(info[4][0]):
+            raise BlockedURL(f"{host} resolves to disallowed address {info[4][0]}")
 
 
 def _validate_url(url: str) -> str:
@@ -56,15 +60,33 @@ def _validate_url(url: str) -> str:
     return url
 
 
+class _ValidatingResolver(ThreadedResolver):
+    """aiohttp resolver that rejects non-public IPs at connection-resolution time.
+
+    Validating here (instead of only in _validate_url) removes the TOCTOU gap:
+    aiohttp connects to exactly the addresses this resolver returns.
+    """
+
+    async def resolve(self, host, port=0, family=socket.AF_INET):
+        hosts = await super().resolve(host, port, family)
+        for h in hosts:
+            if _ip_blocked(h["host"]):
+                raise BlockedURL(f"{host} resolved to disallowed address {h['host']}")
+        return hosts
+
+
 async def fetch_safe(url: str) -> str:
     """Fetch HTML/text with SSRF protections. Returns the raw body (str)."""
     timeout = aiohttp.ClientTimeout(total=TIMEOUT_SECS)
     headers = {"User-Agent": "Mozilla/5.0 (compatible; Jarvis-home/1.0)"}
+    connector = aiohttp.TCPConnector(resolver=_ValidatingResolver())
 
-    async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+    async with aiohttp.ClientSession(
+        timeout=timeout, headers=headers, connector=connector
+    ) as session:
         current = url
         for _ in range(MAX_REDIRECTS + 1):
-            await asyncio.to_thread(_validate_url, current)
+            _validate_url(current)                     # cheap pre-check (scheme + literal IP)
             async with session.get(current, allow_redirects=False) as resp:
                 if resp.status in (301, 302, 303, 307, 308):
                     location = resp.headers.get("Location")

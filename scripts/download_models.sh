@@ -13,20 +13,20 @@ for f in es_ES-davefx-medium.onnx es_ES-davefx-medium.onnx.json; do
 done
 
 echo "==> openWakeWord hey_jarvis (+ shared melspectrogram/embedding models)"
-docker compose run --rm --no-deps orchestrator python - <<'EOF'
+docker compose run --rm --no-deps -T orchestrator python - <<'EOF'
 import openwakeword.utils as u
 u.download_models(model_names=["hey_jarvis_v0.1"], target_directory="/models/openwakeword")
 EOF
 
 echo "==> faster-whisper small INT8 (pre-pull into HF cache on NVMe)"
-docker compose run --rm --no-deps orchestrator python - <<'EOF'
+docker compose run --rm --no-deps -T orchestrator python - <<'EOF'
 from faster_whisper import WhisperModel
 WhisperModel("small", device="cpu", compute_type="int8")
 print("whisper small ready")
 EOF
 
 echo "==> Embeddings multilingual-e5-small (pre-pull)"
-docker compose run --rm --no-deps orchestrator python - <<'EOF'
+docker compose run --rm --no-deps -T orchestrator python - <<'EOF'
 from huggingface_hub import snapshot_download
 snapshot_download("intfloat/multilingual-e5-small")
 print("e5-small ready")
@@ -41,22 +41,28 @@ if [ ! -d "$MODELS/yolo11n_int8_320_openvino" ]; then
         echo "NOTE: revisa el nombre real de la carpeta exportada y muévela a yolo11n_int8_320_openvino"
 fi
 
-echo "==> InsightFace buffalo_sc (Fase 5; este pack NO se auto-descarga como buffalo_l)"
-docker compose run --rm --no-deps vision python3 - <<'EOF'
-# buffalo_sc NO está en la lista de auto-download de insightface (sí buffalo_l/antelopev2).
-# Si no baja solo, descarga el pack y descomprime en /models/insightface/models/buffalo_sc/
-# (debe contener det_500m.onnx + w600k_mbf.onnx). Espejo: SourceForge insightface.mirror v0.7.
-from insightface.app import FaceAnalysis
-try:
-    app = FaceAnalysis(name="buffalo_sc", root="/models/insightface",
-                       allowed_modules=["detection", "recognition"],
-                       providers=["CPUExecutionProvider"])
-    app.prepare(ctx_id=-1)
-    print("buffalo_sc OK")
-except Exception as e:
-    print(f"NOTE: buffalo_sc no disponible automáticamente ({e}).")
-    print("Descárgalo manual a /models/insightface/models/buffalo_sc/ (Fase 5).")
-EOF
+echo "==> InsightFace buffalo_sc (det_500m + w600k_mbf; release v0.7, URL verificada jun-2026)"
+# Descarga directa en el host (idempotente por los .onnx, no por la carpeta). Requiere unzip (install_host.sh).
+BUFFALO_DIR="$MODELS/insightface/models/buffalo_sc"
+BUFFALO_URL="https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_sc.zip"
+BUFFALO_MIRROR="https://downloads.sourceforge.net/project/insightface.mirror/v0.7/buffalo_sc.zip"
+BUFFALO_SHA256="57d31b56b6ffa911c8a73cfc1707c73cab76efe7f13b675a05223bf42de47c72"
+if [ -s "$BUFFALO_DIR/det_500m.onnx" ] && [ -s "$BUFFALO_DIR/w600k_mbf.onnx" ]; then
+    echo "buffalo_sc ya presente en $BUFFALO_DIR, skip"
+else
+    tmpzip=$(mktemp /tmp/buffalo_sc.XXXXXX.zip)
+    trap 'rm -f "$tmpzip"' EXIT
+    curl -fL --retry 3 --connect-timeout 15 -o "$tmpzip" "$BUFFALO_URL" \
+        || curl -fL --retry 3 --connect-timeout 15 -o "$tmpzip" "$BUFFALO_MIRROR"
+    echo "$BUFFALO_SHA256  $tmpzip" | sha256sum -c -
+    mkdir -p "$BUFFALO_DIR"
+    unzip -o "$tmpzip" -d "$BUFFALO_DIR"
+    rm -f "$tmpzip"; trap - EXIT
+    for f in det_500m.onnx w600k_mbf.onnx; do
+        [ -s "$BUFFALO_DIR/$f" ] || { echo "ERROR: falta $f en $BUFFALO_DIR" >&2; exit 1; }
+    done
+    echo "buffalo_sc OK en $BUFFALO_DIR"
+fi
 
 echo "All models in $MODELS:"
 du -sh "$MODELS"/* 2>/dev/null || true

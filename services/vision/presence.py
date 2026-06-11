@@ -125,7 +125,12 @@ class PresenceService:
             return
         self._last_greeted[person] = now
         try:
-            requests.post(f"{ORCHESTRATOR}/event/presence", json={"person": person}, timeout=5)
+            requests.post(
+                f"{ORCHESTRATOR}/event/presence",
+                json={"person": person},
+                headers={"X-Jarvis-Events-Secret": os.getenv("EVENTS_SECRET", "")},
+                timeout=5,
+            )
             logger.info(f"presence event sent: {person}")
         except requests.RequestException as e:
             logger.warning(f"presence event failed: {e}")

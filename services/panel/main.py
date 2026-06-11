@@ -31,6 +31,7 @@ PERSONA = Path("/persona/jarvis.md")
 TOOLS_YAML = Path("/config/tools.yaml")
 EVENTS_DB = Path("/logs/events.db")
 ORCHESTRATOR = os.getenv("ORCHESTRATOR_EVENTS", "http://orchestrator:8070")
+EVENTS_SECRET = os.getenv("EVENTS_SECRET", "")
 
 app = FastAPI(title="jarvis-panel")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -42,7 +43,8 @@ async def tailscale_identity(request: Request, call_next):
     if request.url.path == "/health":
         return await call_next(request)
     user = request.headers.get("Tailscale-User-Login", "")
-    if ALLOWED and user not in ALLOWED:
+    # Fail-closed: sin allowlist configurada (PANEL_ALLOWED_USERS vacío) se deniega todo.
+    if not ALLOWED or user not in ALLOWED:
         return HTMLResponse(
             f"<h1>403</h1><p>Identidad de Tailscale no autorizada: {user or '(sin header)'}.</p>"
             "<p>Accede vía <code>tailscale serve</code> desde el tailnet.</p>",
@@ -118,5 +120,9 @@ async def toggle_dnd(enabled: str = Form(...), password: str = Form("")):
     if not _check_password(password):
         return HTMLResponse("Contraseña incorrecta", status_code=403)
     async with aiohttp.ClientSession() as session:
-        await session.post(f"{ORCHESTRATOR}/dnd", json={"enabled": enabled == "true"})
+        await session.post(
+            f"{ORCHESTRATOR}/dnd",
+            json={"enabled": enabled == "true"},
+            headers={"X-Jarvis-Events-Secret": EVENTS_SECRET},
+        )
     return RedirectResponse("/", status_code=303)

@@ -14,8 +14,15 @@ from typing import Any, Awaitable, Callable
 from loguru import logger
 
 CONFIRM_TTL_SECS = 60
+# Solo "sí" acentuado (no "si" condicional, que aparece en frases dubitativas).
 AFFIRMATIVE_RE = re.compile(
-    r"\b(s[ií]|confirmo|confirmado|adelante|hazlo|dale|procede|vale|ok|de acuerdo|claro que s[ií])\b",
+    r"\b(sí|confirmo|confirmado|adelante|hazlo|dale|procede|vale|ok|de acuerdo|claro que sí)\b",
+    re.IGNORECASE,
+)
+# Cualquier marcador de negación invalida el turno (fail-closed), aunque la frase
+# contenga además un token afirmativo: "no, no vale la pena" NO debe autorizar.
+NEGATION_RE = re.compile(
+    r"\b(no|nunca|jam[áa]s|ni|tampoco|nada)\b",
     re.IGNORECASE,
 )
 
@@ -71,7 +78,12 @@ class SecurityState:
 
     def user_just_affirmed(self) -> bool:
         fresh = time.monotonic() - self.last_user_ts <= CONFIRM_TTL_SECS
-        return fresh and bool(AFFIRMATIVE_RE.search(self.last_user_text or ""))
+        if not fresh:
+            return False
+        text = self.last_user_text or ""
+        if NEGATION_RE.search(text):       # fail-closed ante cualquier negación
+            return False
+        return bool(AFFIRMATIVE_RE.search(text))
 
     async def try_execute_pending(self) -> dict:
         pending, self.pending = self.pending, None
