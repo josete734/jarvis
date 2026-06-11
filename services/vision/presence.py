@@ -23,6 +23,7 @@ from loguru import logger
 
 DETECT_FPS = float(os.getenv("DETECT_FPS", "2"))
 MOTION_MIN_AREA = 4000                      # px² of changed area to count as motion
+PERSON_CONF = float(os.getenv("PERSON_CONF", "0.35"))  # YOLO person score (INT8 baja un poco)
 MATCH_THRESHOLD = 0.45                      # cosine similarity vs known embeddings
 CONSECUTIVE_MATCHES = 3                     # frames of same identity before event
 ABSENCE_MINUTES = 30                        # only greet if away longer than this
@@ -75,6 +76,7 @@ class PresenceService:
             name=os.getenv("FACE_PACK", "buffalo_sc"),
             root=os.getenv("INSIGHTFACE_HOME", "/models/insightface"),
             allowed_modules=["detection", "recognition"],
+            providers=["CPUExecutionProvider"],        # explícito: evita que intente CUDA (issue #2344)
         )
         app.prepare(ctx_id=-1, det_size=(640, 640))   # ctx_id=-1 → CPU
         return app
@@ -92,12 +94,15 @@ class PresenceService:
     def _person_detected(self, frame) -> bool:
         if self._yolo is None:
             return True                              # degrade gracefully: skip stage
-        img = cv2.resize(frame, (320, 320))
-        blob = img.transpose(2, 0, 1)[None].astype(np.float32) / 255.0
-        out = self._yolo(blob)[self._yolo.output(0)]
-        # TODO(Fase 5): proper YOLO post-process (NMS) — this is a coarse check
-        # for class 0 (person) above confidence on the raw output.
-        return bool((out[..., 4] * out[..., 5]).max() > 0.5) if out.ndim == 3 else True
+        # YOLO11 espera RGB NCHW float32 [0,1]; cv2 entrega BGR -> invertir canales.
+        img = cv2.resize(frame, (320, 320))[:, :, ::-1]
+        blob = np.ascontiguousarray(img.transpose(2, 0, 1)[None], dtype=np.float32) / 255.0
+        out = self._yolo(blob)[self._yolo.output(0)]   # [1, 84, 2100] a imgsz=320
+        if out.ndim != 3:
+            return True
+        # YOLO11: 84 = 4 bbox + 80 clases (con sigmoide, SIN objectness). Clase 0 = person.
+        preds = out[0].T                               # [2100, 84]
+        return bool(preds[:, 4].max() > PERSON_CONF)
 
     def _identify(self, frame) -> str | None:
         for face in self._app.get(frame):

@@ -8,11 +8,10 @@ Security rules wired here (§9.1.2):
   - every memory carries `origin` metadata,
   - no extraction from tainted turns (turns containing web content).
 
-TODO(Fase 3): Mem0MemoryService internals decide *when* add() runs. To honor
-the taint rule, locate its add entry point in
-pipecat/services/mem0/memory.py (v1.3.0) and guard it with
-`if security.tainted: skip`. The factory below passes the SecurityState in
-so the subclass only needs that one override.
+Verificado contra pipecat v1.3.0: el taint guard se aplica sobreescribiendo
+`_store_messages` (único método que llama a memory_client.add()); el retrieve
+(`_enhance_context_with_memories`) queda intacto. La subclase recibe el
+SecurityState por closure.
 """
 
 import os
@@ -34,9 +33,9 @@ def build_local_config() -> dict:
             "config": {
                 "model": E5_MODEL,
                 "embedding_dims": 384,
-                # e5 requires prefixes; mem0's HF embedder does not apply them
-                # per-operation -> uniform "query: " prompt (e5 FAQ-sanctioned
-                # for symmetric tasks). Verified trick, PLAN_FINAL §7.2.
+                # e5 requiere prefijos; el embedder HF de mem0 1.x NO distingue add/search
+                # (embed() ignora memory_action) -> default_prompt_name aplica "query: " a TODO.
+                # Verificado en mem0 v1.0.11: subóptimo para e5 pero funcional (PLAN_FINAL §7.2).
                 "model_kwargs": {
                     "prompts": {"q": "query: "},
                     "default_prompt_name": "q",
@@ -84,11 +83,18 @@ def build_memory_service(security):
     verify_e5_prefix()
 
     class JarvisMemoryService(Mem0MemoryService):
-        """Adds taint guard + origin metadata. See module docstring TODO(Fase 3)."""
+        """Taint guard: no persistir memorias en turnos marcados por contenido web
+        (PLAN_FINAL §9.1.2). _store_messages es el único método que escribe en mem0."""
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-            self._security = security
+            self._security = security  # del closure de build_memory_service
+
+        async def _store_messages(self, messages):
+            if self._security and self._security.tainted:
+                logger.info("mem0: turno marcado por contenido web — no se persiste memoria")
+                return
+            await super()._store_messages(messages)
 
     return JarvisMemoryService(
         local_config=build_local_config(),

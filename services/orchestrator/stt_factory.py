@@ -26,6 +26,7 @@ def build_stt():
         )
 
     from pipecat.services.whisper.stt import Model, WhisperSTTService
+    from pipecat.transcriptions.language import Language
 
     name = os.getenv("WHISPER_MODEL", "small").lower()
     model = {
@@ -33,12 +34,12 @@ def build_stt():
         "base": Model.BASE,
         "small": Model.SMALL,
         "medium": Model.MEDIUM,
-        "large-v3": Model.LARGE_V3,
+        "large-v3": Model.LARGE,          # el miembro del enum es LARGE (valor "large-v3")
         "large-v3-turbo": Model.LARGE_V3_TURBO,
     }.get(name, Model.SMALL)
 
     logger.info(f"STT: faster-whisper {name} INT8 (CPU)")
-    # TODO(Fase 1): confirm kwarg names for language/compute on 1.3.0
-    # (research: device + compute_type supported; language fixes Spanish and
-    # skips auto-detection).
-    return WhisperSTTService(model=model, device="cpu", compute_type="int8", language="es")
+    # Firmas verificadas contra pipecat v1.3.0: language es el enum Language, no str.
+    return WhisperSTTService(
+        model=model, device="cpu", compute_type="int8", language=Language.ES
+    )

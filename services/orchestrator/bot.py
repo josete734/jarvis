@@ -24,9 +24,9 @@ from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import PipelineParams, PipelineTask
+from pipecat.pipeline.task import PipelineTask
 from pipecat.services.openai.llm import OpenAILLMService
-from pipecat.services.piper.tts import PiperTTSService
+from pipecat.services.piper.tts import PiperTTSService, PiperTTSSettings
 from pipecat.transports.local.audio import (
     LocalAudioTransport,
     LocalAudioTransportParams,
@@ -108,9 +108,12 @@ async def main() -> None:
         model="jarvis-main",
     )
 
-    tts = PiperTTSService(voice=os.getenv("PIPER_VOICE", "es_ES-davefx-medium"))
-    # TODO(Fase 1): if PiperTTSService supports a data/models dir param, point it
-    # to /models/piper so the voice downloaded by scripts/download_models.sh is reused.
+    # Firma verificada contra pipecat v1.3.0: el TTS embebido toma la voz vía
+    # PiperTTSSettings (no kwarg `voice`) y reutiliza /models/piper (download_models.sh).
+    tts = PiperTTSService(
+        settings=PiperTTSSettings(voice=os.getenv("PIPER_VOICE", "es_ES-davefx-medium")),
+        download_dir=Path("/models/piper"),
+    )
 
     schemas = register_tools(llm, security)
 
@@ -140,10 +143,9 @@ async def main() -> None:
         aggregators.assistant(),
     ]
 
-    task = PipelineTask(
-        Pipeline(processors),
-        params=PipelineParams(allow_interruptions=True),
-    )
+    # Interrupciones (barge-in) activas por defecto en Pipecat 1.x; el control de fin
+    # de turno va en LLMUserAggregatorParams (smart-turn), no en PipelineParams.
+    task = PipelineTask(Pipeline(processors))
 
     # Internal HTTP server: presence events (Fase 5), DND toggle, event log.
     await events.start(task, security, port=int(os.getenv("EVENTS_PORT", "8070")))

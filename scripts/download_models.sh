@@ -33,20 +33,29 @@ print("e5-small ready")
 EOF
 
 echo "==> YOLO11n -> OpenVINO INT8 @320 (one-off export via ultralytics image)"
+# El export INT8 calibra con coco8 (se descarga solo) y produce la carpeta yolo11n_openvino_model/.
 if [ ! -d "$MODELS/yolo11n_int8_320_openvino" ]; then
     docker run --rm -v "$MODELS":/work -w /work ultralytics/ultralytics:latest \
         yolo export model=yolo11n.pt format=openvino int8=True imgsz=320
-    mv "$MODELS"/yolo11n_int8_openvino_model "$MODELS"/yolo11n_int8_320_openvino 2>/dev/null || \
-        echo "NOTE: check the export output dir name and move it to yolo11n_int8_320_openvino"
+    mv "$MODELS"/yolo11n_openvino_model "$MODELS"/yolo11n_int8_320_openvino 2>/dev/null || \
+        echo "NOTE: revisa el nombre real de la carpeta exportada y muévela a yolo11n_int8_320_openvino"
 fi
 
-echo "==> InsightFace buffalo_sc (auto-download into /models/insightface)"
+echo "==> InsightFace buffalo_sc (Fase 5; este pack NO se auto-descarga como buffalo_l)"
 docker compose run --rm --no-deps vision python3 - <<'EOF'
+# buffalo_sc NO está en la lista de auto-download de insightface (sí buffalo_l/antelopev2).
+# Si no baja solo, descarga el pack y descomprime en /models/insightface/models/buffalo_sc/
+# (debe contener det_500m.onnx + w600k_mbf.onnx). Espejo: SourceForge insightface.mirror v0.7.
 from insightface.app import FaceAnalysis
-app = FaceAnalysis(name="buffalo_sc", root="/models/insightface",
-                   allowed_modules=["detection", "recognition"])
-app.prepare(ctx_id=-1)
-print("buffalo_sc ready")
+try:
+    app = FaceAnalysis(name="buffalo_sc", root="/models/insightface",
+                       allowed_modules=["detection", "recognition"],
+                       providers=["CPUExecutionProvider"])
+    app.prepare(ctx_id=-1)
+    print("buffalo_sc OK")
+except Exception as e:
+    print(f"NOTE: buffalo_sc no disponible automáticamente ({e}).")
+    print("Descárgalo manual a /models/insightface/models/buffalo_sc/ (Fase 5).")
 EOF
 
 echo "All models in $MODELS:"
