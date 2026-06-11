@@ -1,0 +1,39 @@
+{
+  "$comment": "Permisos del proyecto Jarvis. Operación habitual sin fricción; sudo y borrados piden confirmación. Los secretos (.env) están vetados a la lectura por higiene.",
+  "permissions": {
+    "allow": [
+      "Bash(docker compose:*)",
+      "Bash(docker:*)",
+      "Bash(make:*)",
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Bash(bash scripts/:*)",
+      "Bash(./scripts/:*)",
+      "Bash(curl:*)",
+      "Bash(getent:*)",
+      "Bash(arecord:*)",
+      "Bash(aplay:*)",
+      "Bash(sox:*)",
+      "Bash(v4l2-ctl:*)",
+      "Bash(clinfo:*)",
+      "Bash(nvidia-smi:*)",
+      "Bash(df:*)",
+      "Bash(du:*)",
+      "Bash(free:*)",
+      "Bash(systemctl status:*)",
+      "Bash(journalctl:*)",
+      "Read(//var/lib/jarvis/**)",
+      "Read(//srv/jarvis/**)",
+      "Edit",
+      "Write",
+      "WebFetch",
+      "WebSearch"
+    ],
+    "deny": [
+      "Bash(rm -rf /:*)",
+      "Bash(sudo rm -rf:*)",
+      "Read(./.env)",
+      "Read(./**/.env)"
+    ]
+  }
+}
