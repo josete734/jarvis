@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install validators
+        run: pip install pyyaml
+
+      - name: Python syntax (compileall)
+        run: python -m compileall -q services
+
+      - name: YAML configs valid
+        run: |
+          python - <<'EOF'
+          import yaml
+          for f in [
+              "config/searxng/settings.yml",
+              "config/tools.yaml",
+              "config/litellm/config.yaml",
+          ]:
+              yaml.safe_load(open(f))
+          print("yaml ok")
+          EOF
+
+      - name: n8n workflow JSON valid
+        run: python -c "import json; json.load(open('n8n/workflows/recordatorio.example.json')); print('json ok')"
+
+      - name: docker compose parses
+        run: |
+          cp .env.example .env
+          docker compose config -q && echo "compose ok"
