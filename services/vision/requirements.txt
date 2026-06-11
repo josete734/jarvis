@@ -1,0 +1,9 @@
+# TODO(Fase 5): verify exact openvino pip pin available at install time (2026.1.x)
+openvino>=2026.1,<2026.2
+opencv-python-headless>=4.10
+insightface==1.0.1
+onnxruntime>=1.20
+numpy
+fastapi
+uvicorn[standard]
+aiohttp

@@ -1,0 +1,10 @@
+# /etc/systemd/system/jarvis-reflection.service
+[Unit]
+Description=Jarvis nightly memory reflection
+Requires=jarvis.service
+After=jarvis.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/jarvis
+ExecStart=/usr/bin/docker compose run --rm reflection

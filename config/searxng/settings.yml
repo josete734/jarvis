@@ -1,0 +1,11 @@
+# SearXNG — PLAN_FINAL §7.3 (private single-user instance)
+use_default_settings: true
+
+server:
+  limiter: false                 # single local consumer → no Valkey/Redis needed
+  secret_key: "${SEARXNG_SECRET}"
+
+search:
+  formats:
+    - html
+    - json                       # required for the web_search tool (403 otherwise)

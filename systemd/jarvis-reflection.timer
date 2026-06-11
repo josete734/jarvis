@@ -1,0 +1,10 @@
+# /etc/systemd/system/jarvis-reflection.timer
+[Unit]
+Description=Run Jarvis reflection at 04:00
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

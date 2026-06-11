@@ -1,0 +1,44 @@
+# LiteLLM proxy — PLAN_FINAL §4 (syntax verified against LiteLLM 1.88 docs, jun-2026)
+# A/B/C switch (Fase 2): change ONLY the model line of jarvis-main.
+#   A (favorito): groq/llama-3.3-70b-versatile
+#   B:            groq/openai/gpt-oss-120b   (+ caching 50%; watch tool_use_failed, litellm #16129)
+#   C:            groq/qwen/qwen3-32b        (preview en Groq: riesgo de deprecación)
+
+model_list:
+  - model_name: jarvis-main
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_API_KEY
+
+  - model_name: jarvis-fb1
+    litellm_params:
+      model: cerebras/gpt-oss-120b
+      api_key: os.environ/CEREBRAS_API_KEY
+      # alternative: cerebras/zai-glm-4.7 (preview; pin Spanish in system prompt)
+
+  - model_name: jarvis-fb2
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+
+  # mem0 fact extraction — cheap model with its own Groq per-model quota (§3.3)
+  - model_name: jarvis-memory
+    litellm_params:
+      model: groq/llama-3.1-8b-instant
+      api_key: os.environ/GROQ_API_KEY
+
+  # on-demand vision (Fase 5) — revalidate current Groq vision model on arrival (§13.6)
+  - model_name: jarvis-vision
+    litellm_params:
+      model: groq/meta-llama/llama-4-scout-17b-16e-instruct
+      api_key: os.environ/GROQ_API_KEY
+
+router_settings:
+  fallbacks:
+    - {"jarvis-main": ["jarvis-fb1", "jarvis-fb2"]}
+  num_retries: 2
+  cooldown_time: 30
+
+litellm_settings:
+  telemetry: false
+  drop_params: true        # tolerate provider-specific params across fallbacks

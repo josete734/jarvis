@@ -1,0 +1,10 @@
+# /etc/systemd/system/jarvis-backup.service
+[Unit]
+Description=Jarvis restic backup to USB
+Requires=jarvis.service
+After=jarvis.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/jarvis
+ExecStart=/usr/bin/bash scripts/backup.sh

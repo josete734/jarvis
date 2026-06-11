@@ -1,0 +1,9 @@
+# Pinned per PLAN_FINAL §2 (jun-2026).
+# TODO(Fase 1): verify extras names against pipecat-ai 1.3.0 pyproject.toml (§13.3)
+pipecat-ai[local,silero,whisper,piper,mem0,openai]==1.3.0
+openwakeword==0.6.0
+trafilatura==2.1.0
+aiohttp>=3.9,<4
+pyyaml>=6
+loguru
+# livekit            # uncomment only if adopting AEC plan C (PLAN_FINAL §5.2)

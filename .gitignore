@@ -1,0 +1,16 @@
+# secrets
+.env
+*.restic-pass
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# artifacts
+*.wav
+speech_test/
+.DS_Store
+
+# local data lives OUTSIDE the repo (/srv/jarvis, /var/lib/jarvis/models)
+data/

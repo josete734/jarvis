@@ -1,0 +1,162 @@
+# J.A.R.V.I.S. — PLAN_FINAL.md §6 (v3, 11-jun-2026)
+# Pinned versions verified jun-2026; items marked "verify" in §13 of the plan.
+name: jarvis
+
+x-logging: &default-logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+services:
+  litellm:
+    image: docker.litellm.ai/berriai/litellm:main-stable   # PIN versioned tag at deploy (§13.1)
+    restart: unless-stopped
+    volumes: ["./config/litellm/config.yaml:/app/config.yaml:ro"]
+    env_file: .env
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health/liveliness"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  chroma:
+    image: chromadb/chroma:1.5.9
+    restart: unless-stopped
+    volumes: ["/srv/jarvis/chroma:/data"]          # 1.x breaking change: /data
+    logging: *default-logging
+
+  searxng:
+    image: searxng/searxng:2025.6.7                # PIN current dated tag at deploy (§13.2)
+    restart: unless-stopped
+    environment: ["SEARXNG_SECRET=${SEARXNG_SECRET}"]
+    volumes: ["./config/searxng:/etc/searxng:ro"]
+    logging: *default-logging
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: n8n
+      POSTGRES_USER: n8n
+      POSTGRES_PASSWORD: ${N8N_DB_PASS}
+    volumes: ["/srv/jarvis/postgres:/var/lib/postgresql/data"]
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  n8n:
+    image: n8nio/n8n:2.25.7                        # verify latest 2.25.x patch (§13.2)
+    restart: unless-stopped
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASS}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=true
+      - WEBHOOK_URL=http://n8n:5678/
+      - GENERIC_TIMEZONE=${TZ}
+    ports: ["127.0.0.1:5678:5678"]                 # exposed to tailnet via `tailscale serve` (TLS)
+    volumes: ["/srv/jarvis/n8n:/home/node/.n8n"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    logging: *default-logging
+
+  orchestrator:
+    build: ./services/orchestrator
+    restart: unless-stopped
+    devices: ["/dev/snd:/dev/snd"]
+    group_add: ["audio"]
+    volumes:
+      - /var/lib/jarvis/models:/models             # models live on the M.2 (NVMe)
+      - ./prompts:/prompts:ro
+      - ./persona:/persona:ro
+      - ./config:/config:ro
+      - /srv/jarvis/logs:/logs
+    environment:
+      - LLM_BASE=http://litellm:4000/v1
+      - LITELLM_API_KEY=${LITELLM_API_KEY}
+      - SEARX=http://searxng:8080
+      - N8N_BASE=http://n8n:5678
+      - N8N_WEBHOOK_SECRET=${N8N_WEBHOOK_SECRET}
+      - VISION_BASE=http://vision:8089
+      - STT_BACKEND=whisper                        # whisper | openai (openai → parakeet, Fase 2-3)
+      - STT_BASE_URL=http://stt-parakeet:8000/v1   # verify port of chosen server (§13.8)
+      - WHISPER_MODEL=small
+      - PIPER_VOICE=es_ES-davefx-medium
+      - WAKE_MODEL_PATH=/models/openwakeword/hey_jarvis_v0.1.onnx
+      - WAKE_TIMEOUT_SECS=45
+      - MEM0_ENABLED=false                         # switch to true in Fase 3
+      - EVENTS_PORT=8070
+      - HF_HOME=/models/hf                         # whisper/e5 caches persist on NVMe
+      - AUDIO_INPUT_INDEX=${AUDIO_INPUT_INDEX}
+      - AUDIO_OUTPUT_INDEX=${AUDIO_OUTPUT_INDEX}
+      - TZ=${TZ}
+    depends_on: [litellm, chroma, searxng, n8n]
+    logging: *default-logging
+
+  stt-parakeet:                                    # Fase 2-3 (PLAN_FINAL §3.4)
+    image: ghcr.io/achetronic/parakeet:v0.5.0      # verify tag/port/healthcheck on adoption (§13.8)
+    profiles: ["stt-parakeet"]
+    restart: unless-stopped
+    logging: *default-logging
+
+  vision:
+    build: ./services/vision
+    restart: unless-stopped
+    devices:
+      - "/dev/video0:/dev/video0"
+      - "/dev/dri/renderD128:/dev/dri/renderD128"
+    group_add: ["video", "${RENDER_GID:-989}"]     # getent group render (§13.7)
+    volumes:
+      - /var/lib/jarvis/models:/models
+      - /srv/jarvis/faces:/faces                   # known-person embeddings (Fase 5)
+    environment:
+      - OPENVINO_DEVICE=GPU
+      - DETECT_FPS=2
+      - YOLO_MODEL_DIR=/models/yolo11n_int8_320_openvino
+      - FACE_PACK=buffalo_sc
+      - INSIGHTFACE_HOME=/models/insightface
+      - ORCHESTRATOR_EVENTS=http://orchestrator:8070
+      - DISABLE_PRESENCE=true                      # switch to false in Fase 5
+    logging: *default-logging
+
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.4.2
+    restart: unless-stopped
+    environment: [CONTAINERS=1]                    # GET/HEAD only (POST=0 default)
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
+    logging: *default-logging
+
+  panel:
+    build: ./services/panel
+    restart: unless-stopped
+    ports: ["127.0.0.1:8080:8080"]                 # exposed to tailnet via `tailscale serve` (identity+TLS)
+    environment:
+      - DOCKER_HOST=tcp://socket-proxy:2375
+      - PANEL_ALLOWED_USERS=${PANEL_ALLOWED_USERS}
+      - PANEL_PASSWORD=${PANEL_PASSWORD}
+      - TZ=${TZ}
+    volumes:
+      - /srv/jarvis/logs:/logs
+      - ./persona:/persona                         # rw: panel edits; orchestrator mounts :ro
+      - ./config:/config
+    depends_on: [orchestrator, socket-proxy]
+    logging: *default-logging
+
+  reflection:
+    build: ./services/reflection
+    profiles: ["jobs"]                             # launched by systemd timer at 04:00
+    environment:
+      - LLM_BASE=http://litellm:4000/v1
+      - LITELLM_API_KEY=${LITELLM_API_KEY}
+      - TZ=${TZ}
+    volumes:
+      - /srv/jarvis/logs:/logs
+      - ./persona:/persona
+      - ./prompts:/prompts:ro
+    depends_on: [litellm, chroma]
+    logging: *default-logging
