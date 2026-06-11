@@ -484,16 +484,17 @@ Si la RAM aprieta: canary-180m-flash (~3× más ligero que parakeet) o volver a 
 
 ## 13. Pendientes de verificación al desplegar
 
-1. Tag versionado exacto de LiteLLM en `docker.litellm.ai` (no quedarse en `main-stable`).
-2. Último patch de n8n 2.25.x y tag datado de SearXNG.
-3. Nombres exactos de extras en el `pyproject.toml` de pipecat-ai 1.3.0.
-4. Límites free reales de Gemini en tu cuenta (AI Studio).
-5. TPD del Developer tier para el modelo elegido (doc oficial: "hasta 10×").
-6. Modelo de visión vigente en Groq al llegar a Fase 5 (Scout es preview).
-7. GID del grupo `render` del host → compose de vision.
-8. Puerto/healthcheck del contenedor `achetronic/parakeet` al activar el perfil (y bug litellm #16129 si se elige la opción B con caching).
-9. Sintaxis vigente del CLI `tailscale serve` (los flags han cambiado entre versiones).
-10. Modelo concreto del micro/altavoz del propietario → confirmar AEC por ficha técnica antes incluso del test §5.1.
+**Cerrados en la oleada de verificación del 11-jun-2026** (detalle en `docs/VERIFICACION_APIS.md`):
+tag de LiteLLM (`v1.88.1`), patches de n8n (`2.26.2`) y SearXNG (`2026.6.11-1957876dd`),
+extras de pipecat-ai 1.3.0, imagen/puerto/healthcheck de parakeet (`0.5.0-int8` en `:5092`),
+sintaxis de `tailscale serve` (`--bg --https=`), modelo de visión de Groq (Scout sigue en
+preview), compatibilidad mem0 1.x↔Chroma (pin `chromadb==1.5.9`), y descarga de `buffalo_sc`.
+
+**Pendientes reales (solo verificables con tu cuenta o el hardware delante):**
+1. Límites free reales de Gemini en tu cuenta (AI Studio) para dimensionar el fallback.
+2. TPD del Developer tier de Groq para el modelo elegido (la doc solo dice "hasta 10×").
+3. GID del grupo `render` del host (`getent group render`) → `.env: RENDER_GID`.
+4. Bug litellm #16129 (mapeo `cached_tokens` en streaming) si el A/B elige gpt-oss-120b.
 
 ---
 

@@ -40,6 +40,8 @@ Este archivo es tu contexto al abrir el proyecto. **Antes de tocar nada, lee
    primera ejecución en el M70q es la Fase 1, y quedan `TODO` genuinos (los que
    solo se validan ejecutando). Si una API real difiere, **verifica en la
    doc/fuente oficial antes de cambiar — no inventes firmas ni nombres de módulos**.
+   Una oleada de revisión adversarial (11-jun-2026) corrigió 15 hallazgos de arranque,
+   seguridad y operaciones — registro en `docs/VERIFICACION_APIS.md`.
 4. Al inicio de cada fase, **revisa las deprecations de Groq**
    (`console.groq.com/docs/deprecations`) y las notas de versión de Pipecat:
    el catálogo de modelos y la API rotan rápido.

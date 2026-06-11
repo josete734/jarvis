@@ -50,3 +50,29 @@ ejecutar nada en hardware, para reducir los `TODO(Fase 1)`.
 
 *Tags verificados: pipecat-ai@v1.3.0, openWakeWord@v0.6.0, mem0ai@v1.0.11, y código
 fuente de ultralytics e insightface (main).*
+
+---
+
+## Oleada de cierre (11-jun-2026, ronda final)
+
+Tras una revisión adversarial (lentes corrección/seguridad/operaciones + verificación
+escéptica de cada hallazgo) se corrigieron 15 hallazgos confirmados:
+
+| Severidad | Corrección |
+|---|---|
+| HIGH | Wake word: los modelos compartidos (melspectrogram/embedding/silero_vad) se hornean en el Dockerfile del orquestador — antes el gate crasheaba al arrancar buscándolos en el paquete vacío. |
+| HIGH | Confirmación verbal: `user_just_affirmed` rechaza cualquier frase con negación (fail-closed) aunque contenga "vale/sí/ok" — antes "no, no vale la pena" autorizaba. Quitado "si" sin tilde; tests de exploit añadidos. |
+| MEDIUM | `litellm` healthcheck con `python3` (la imagen wolfi no trae curl); parakeet healthcheck por `/dev/tcp`. |
+| MEDIUM | Gate de wake word: `TranscriptWatcher` renueva el keepalive al hablar (antes se dormía a los 45 s a mitad de conversación). |
+| MEDIUM | Panel fail-closed (allowlist vacía = denegar) + servidor de eventos con secreto compartido (`EVENTS_SECRET`) en `/dnd` y `/event/presence`. |
+| MEDIUM | SSRF: la validación de IP pasa al resolver de aiohttp (cierra el TOCTOU/DNS-rebinding). |
+| MEDIUM | Reflexión nocturna: ventana de 24 h (antes solo veía 00:00-04:00 → perdía el día). |
+| MEDIUM | n8n: anti-replay (dedupe de request-id en staticData) en el workflow de ejemplo. |
+| LOW | mem0 history.db persistido (`/srv/jarvis/mem0`); htmx vendorizado; `restic`+`unzip` en install_host; `buffalo_sc` con descarga sha256; RUNBOOK de caras actualizado; `-T` en runs por stdin; systemd reflection con `-T`. |
+
+Datos verificados aplicados: tags fijados (litellm `v1.88.1`, n8n `2.26.2`, searxng datado),
+parakeet `0.5.0-int8` en `:5092` (`STT_BASE_URL` corregido), `chromadb==1.5.9` (la config
+host/port de mem0 1.x usa el mismo path que `HttpClient` y habla la API v2 del server 1.5.9).
+Implementados los huecos: logging de conversación (`user_said`/`assistant_said`, que la
+reflexión necesita) y `enroll_face.py`. Warmup descartado (Whisper/Piper cargan eager,
+verificado). 37 tests en verde.

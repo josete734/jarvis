@@ -16,7 +16,9 @@ Esqueleto **verificado contra el código fuente real** de las librerías
 (Pipecat v1.3.0, openWakeWord v0.6.0, mem0 v1.0.11, ultralytics, insightface) —
 ver [`docs/VERIFICACION_APIS.md`](docs/VERIFICACION_APIS.md). Aún no ejecutado en
 hardware: **la primera ejecución en el M70q es la Fase 1**. Los puntos que solo
-se validan ejecutando quedan marcados como `TODO` en el código.
+se validan ejecutando quedan marcados como `TODO` en el código. Una oleada de
+revisión adversarial (11-jun-2026) corrigió 15 hallazgos de arranque, seguridad y
+operaciones (ver [`docs/VERIFICACION_APIS.md`](docs/VERIFICACION_APIS.md)).
 
 ## Trabajar con Claude Code
 
