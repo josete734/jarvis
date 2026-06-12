@@ -58,6 +58,32 @@ def _env_int(name: str):
     return int(val) if val else None
 
 
+def _audio_index(env_name: str, fallback_name: str = "default"):
+    """Índice de dispositivo de audio para PyAudio, robusto ante reordenado.
+
+    Los índices de PyAudio NO son estables entre reinicios / replug del USB (el
+    orden de tarjetas ALSA cambia). Por eso: si la env trae un entero se usa tal
+    cual; si está vacía se busca POR NOMBRE el primer dispositivo que contenga
+    `fallback_name` (por defecto "default" = el PCM asimétrico del asound.conf,
+    que enruta captura->PIXY y reproducción->jack con remuestreo). Devuelve None
+    si no se encuentra (PyAudio caería al default del sistema)."""
+    val = os.getenv(env_name, "").strip()
+    if val:
+        return int(val)
+    import pyaudio
+
+    pa = pyaudio.PyAudio()
+    try:
+        for i in range(pa.get_device_count()):
+            if fallback_name.lower() in pa.get_device_info_by_index(i)["name"].lower():
+                logger.info(f"audio: {env_name} -> índice {i} (match '{fallback_name}')")
+                return i
+    finally:
+        pa.terminate()
+    logger.warning(f"audio: ningún dispositivo '{fallback_name}' para {env_name}; uso default de PyAudio")
+    return None
+
+
 def load_system_prompt() -> str:
     """Compose system prompt: core rules + personality sheet + relationship state."""
     parts = []
@@ -89,8 +115,8 @@ async def main() -> None:
             audio_out_enabled=True,
             audio_in_sample_rate=16000,           # openwakeword + whisper expect 16 kHz
             audio_out_sample_rate=22050,          # davefx-medium native rate
-            input_device_index=_env_int("AUDIO_INPUT_INDEX"),
-            output_device_index=_env_int("AUDIO_OUTPUT_INDEX"),
+            input_device_index=_audio_index("AUDIO_INPUT_INDEX"),
+            output_device_index=_audio_index("AUDIO_OUTPUT_INDEX"),
         )
     )
 
@@ -149,7 +175,12 @@ async def main() -> None:
 
     # Interrupciones (barge-in) activas por defecto en Pipecat 1.x; el control de fin
     # de turno va en LLMUserAggregatorParams (smart-turn), no en PipelineParams.
-    task = PipelineTask(Pipeline(processors))
+    #
+    # idle_timeout_secs=None: el WakeWordGate consume el audio mientras duerme, así
+    # que sin "hey Jarvis" no fluye ningún frame y el watchdog de Pipecat (idle 300 s,
+    # resetea con Bot/UserSpeakingFrame) cancelaría el worker -> reinicio cada 5 min.
+    # Un asistente always-on idlea por diseño: desactivamos el idle timeout.
+    task = PipelineTask(Pipeline(processors), idle_timeout_secs=None)
 
     # Internal HTTP server: presence events (Fase 5), DND toggle, event log.
     await events.start(task, security, port=int(os.getenv("EVENTS_PORT", "8070")))

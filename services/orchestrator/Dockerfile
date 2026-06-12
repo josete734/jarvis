@@ -1,4 +1,7 @@
-FROM python:3.12-slim
+# 3.11 (no 3.12): openwakeword 0.6.0 declara tflite-runtime obligatorio en Linux
+# y ese paquete no publica wheel para cp312 (último 2.14.0 = cp311). El gate corre
+# por ONNX (WAKE_FRAMEWORK=onnx), así que tflite queda instalado pero sin uso.
+FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential portaudio19-dev libasound2-dev alsa-utils curl \

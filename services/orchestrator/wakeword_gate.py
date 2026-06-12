@@ -49,7 +49,9 @@ class WakeWordGate(FrameProcessor):
         self._model = Model(
             wakeword_models=[model_path],
             inference_framework=framework,
-            vad_threshold=float(os.getenv("WAKE_VAD_THRESHOLD", "0.5")),
+            # TEMP(Fase 1 debug): default 0.0 desactiva el VAD interno de openWakeWord,
+            # que con audio de nivel bajo (mic USB lejano) anulaba el score antes de evaluarlo.
+            vad_threshold=float(os.getenv("WAKE_VAD_THRESHOLD", "0.0")),
         )
         self._model_key = list(self._model.models.keys())[0]
         logger.info(f"WakeWordGate ready (model={model_path}, framework={framework})")
@@ -101,6 +103,13 @@ class WakeWordGate(FrameProcessor):
 
             audio = np.frombuffer(chunk, dtype=np.int16)
             score = self._model.predict(audio).get(self._model_key, 0.0)
+            # TEMP(Fase 1 debug): cada ~25 chunks (~2s) loguea actividad real del gate
+            self._dn = getattr(self, "_dn", 0) + 1
+            self._da = max(getattr(self, "_da", 0), int(np.abs(audio).max()))
+            self._ds = max(getattr(self, "_ds", 0.0), float(score))
+            if self._dn >= 25:
+                logger.info(f"[debug] chunks={self._dn} amp_max={self._da} score_max={self._ds:.3f}")
+                self._dn = 0; self._da = 0; self._ds = 0.0
             if score >= self._threshold:
                 self._awake = True
                 self._last_wake = time.monotonic()
