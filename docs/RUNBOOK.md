@@ -13,8 +13,21 @@ sudo tailscale serve --bg --https=8443 http://127.0.0.1:5678   # n8n
 tailscale serve status
 ```
 La identidad del tailnet llega al panel en `Tailscale-User-Login` (allowlist en
-`.env: PANEL_ALLOWED_USERS`). **Nunca usar Funnel** (expondría a internet sin
+`.env: PANEL_ALLOWED_USERS`). **Nunca usar Funnel pelado** (expondría a internet sin
 identidad). Verificar sintaxis del CLI si cambia (`tailscale serve --help`).
+
+## Exponer el panel por internet (Cloudflare Tunnel + Access)
+Añadido fuera del plan original (que decía "Nunca Funnel"): el panel es accesible en
+**https://jarvis.calahierbas.casa**. Es seguro porque **Cloudflare Access** exige login
+(OTP por email, solo `josea.castillodiez@gmail.com`) ANTES de llegar al panel e inyecta
+la identidad en `Cf-Access-Authenticated-User-Email`, que el middleware valida contra
+`PANEL_ALLOWED_USERS` igual que la de Tailscale (NO es un Funnel pelado).
+- **Tunnel**: servicio `cloudflared` del compose (token en `.env: TUNNEL_TOKEN`), tunnel
+  "calahierbas". Sin abrir puertos (salida QUIC). El panel sigue en 127.0.0.1.
+- **Ingress**: `jarvis.calahierbas.casa → http://panel:8080` (config remota en Cloudflare).
+- **Exponer otro servicio**: regla al ingress del tunnel + DNS CNAME al
+  `<tunnelid>.cfargotunnel.com` (proxied) + app de Access. Ver `docs/homelab-anterior.md`.
+- **Cerrar sesión**: enlace "salir" del panel (`/cdn-cgi/access/logout`).
 
 ## Añadir una habilidad nueva (acción n8n)
 1. Crear el workflow en n8n partiendo de `n8n/workflows/recordatorio.example.json`
@@ -89,4 +102,4 @@ Borrar una identidad: eliminar `/faces/<name>.npy` y reiniciar vision. DND desde
 | 403 en SearXNG desde web_search | falta `json` en `search.formats` (config/searxng/settings.yml) |
 | Corta al usuario al pensar | smart-turn debe estar activo (default); revisar logs antes de subir `stop_secs` |
 | `tool_use_failed` frecuentes | modelo B (gpt-oss): descripciones de tools más explícitas o volver a llama-3.3-70b |
-| Panel 403 | falta header de identidad → entrar por la URL de `tailscale serve`, no por IP |
+| Panel 403 | falta header de identidad → entrar por `tailscale serve` (tailnet) o por `https://jarvis.calahierbas.casa` (Cloudflare Access); nunca por IP directa |

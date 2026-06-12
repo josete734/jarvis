@@ -46,6 +46,7 @@ cp .env.example .env && nano .env          # secretos + RENDER_GID
 make build && make models                  # imágenes + modelos (Piper, Whisper, wake, YOLO, e5, caras)
 make up && make logs s=orchestrator        # arrancar
 sudo tailscale serve --bg --https=443 http://127.0.0.1:8080   # panel al tailnet
+# o por internet con Cloudflare Tunnel + Access (https://jarvis.calahierbas.casa) — ver docs/RUNBOOK.md
 ```
 
 ## Estructura
