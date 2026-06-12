@@ -10,6 +10,7 @@ editor de las personas, toggle de tools y de "no molestar".
 Pendiente: dashboard de latencias por etapa (depende de la voz).
 """
 
+import html
 import os
 import sqlite3
 import time
@@ -58,13 +59,28 @@ async def identity(request: Request, call_next):
     )
     if not ALLOWED or user not in ALLOWED:
         return HTMLResponse(
-            f"<h1>403</h1><p>Identidad no autorizada: {user or '(sin header)'}.</p>"
+            f"<h1>403</h1><p>Identidad no autorizada: {html.escape(user) or '(sin header)'}.</p>"
             "<p>Entra por el tailnet (<code>tailscale serve</code>) o por "
             "<code>jarvis.calahierbas.casa</code> (Cloudflare Access).</p>",
             status_code=403,
         )
     request.state.user = user
     return await call_next(request)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Cabeceras de seguridad en todas las respuestas (panel expuesto por internet)."""
+    resp = await call_next(request)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.headers["Content-Security-Policy"] = (
+        "default-src 'self'; img-src 'self' data:; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self'; "
+        "base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+    )
+    return resp
 
 
 def _check_password(pw: str) -> bool:
