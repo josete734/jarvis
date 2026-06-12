@@ -4,13 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Jarvis — Panel</title>
+  <link rel="icon" href="/favicon.ico">
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/htmx.min.js"></script>   <!-- htmx 2.0.4 vendorizado: sin CDN externa (panel privilegiado) -->
 </head>
 <body>
   <header>
     <h1>J.A.R.V.I.S.</h1>
-    <span class="user">{{ user or "(sin identidad)" }}</span>
+    <span class="user">{{ user or "(sin identidad)" }}
+      · <a href="/cdn-cgi/access/logout">salir</a></span>
   </header>
   <main>
     {% block content %}{% endblock %}

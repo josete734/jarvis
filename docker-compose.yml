@@ -78,6 +78,7 @@ services:
       - ./persona:/persona:ro
       - ./config:/config:ro
       - /srv/jarvis/logs:/logs
+      - ./config/audio/asound.container.conf:/etc/asound.conf:ro   # default ALSA asimétrico: mic PIXY (in) + auriculares jack (out)
     environment:
       - LLM_BASE=http://litellm:4000/v1
       - LITELLM_API_KEY=${LITELLM_API_KEY}
@@ -137,7 +138,7 @@ services:
     logging: *default-logging
 
   socket-proxy:
-    image: tecnativa/docker-socket-proxy:0.4.2
+    image: tecnativa/docker-socket-proxy:v0.4.2   # el tag lleva prefijo 'v' (0.4.2 sin v no existe en Docker Hub)
     restart: unless-stopped
     environment: [CONTAINERS=1]                    # GET/HEAD only (POST=0 default)
     volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
@@ -158,7 +159,16 @@ services:
       - /srv/jarvis/logs:/logs
       - ./persona:/persona                         # rw: panel edits; orchestrator mounts :ro
       - ./config:/config
+      - /mnt/storage:/mnt/storage:ro               # solo para métrica de uso del disco SATA
     depends_on: [orchestrator, socket-proxy]
+    logging: *default-logging
+
+  cloudflared:                                   # tunnel saliente a Cloudflare (sin abrir puertos)
+    image: cloudflare/cloudflared:2025.11.1      # cliente del tunnel "calahierbas"; ingress remoto (jarvis -> panel)
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment: ["TUNNEL_TOKEN=${TUNNEL_TOKEN}"]
+    depends_on: [panel]
     logging: *default-logging
 
   reflection:

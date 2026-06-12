@@ -1,0 +1,40 @@
+<section>
+  <h2>Servidor <span class="hint">· en vivo {{ now }}</span></h2>
+  <table>
+    <tr><td>Carga</td><td>{{ metrics.load or "—" }} <span class="hint">({{ metrics.cores }} hilos)</span></td></tr>
+    {% if metrics.mem %}
+    <tr><td>RAM</td>
+      <td><div class="bar"><span class="{{ 'hot' if metrics.mem.pct >= 85 else '' }}" style="width:{{ metrics.mem.pct }}%"></span></div>
+          {{ metrics.mem.used }} / {{ metrics.mem.total }} GB · {{ metrics.mem.pct }}%</td></tr>
+    {% endif %}
+    {% for d in metrics.disks %}
+    <tr><td>{{ d.label }}</td>
+      <td><div class="bar"><span class="{{ 'hot' if d.pct >= 85 else '' }}" style="width:{{ d.pct }}%"></span></div>
+          {{ d.used }} / {{ d.total }} GB · {{ d.pct }}%</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
+<section>
+  <h2>Servicios <span class="hint">· {{ overview.up }}/{{ overview.total }} activos</span></h2>
+  <table>
+    {% for c in containers %}
+    <tr class="state-{{ c.state }}">
+      <td>{{ c.name }}</td><td>{{ c.state }}</td><td>{{ c.status }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3">Sin contenedores.</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
+<section>
+  <h2>Últimos eventos <span class="hint">· en vivo</span></h2>
+  <table>
+    {% for e in events %}
+    <tr><td>{{ e.time }}</td><td>{{ e.kind }}</td><td><code>{{ e.payload }}</code></td></tr>
+    {% else %}
+    <tr><td colspan="3">Sin eventos todavía.</td></tr>
+    {% endfor %}
+  </table>
+</section>

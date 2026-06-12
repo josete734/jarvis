@@ -1,16 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
 
-<section>
-  <h2>Servicios</h2>
-  <table>
-    {% for c in containers %}
-    <tr class="state-{{ c.state }}">
-      <td>{{ c.name }}</td><td>{{ c.state }}</td><td>{{ c.status }}</td>
-    </tr>
-    {% endfor %}
-  </table>
-</section>
+<div id="live" hx-get="/partials/live" hx-trigger="every 5s" hx-swap="innerHTML">
+  {% include "_live.html" %}
+</div>
 
 <section>
   <h2>Herramientas</h2>
@@ -47,25 +40,16 @@
   </form>
 </section>
 
+{% for p in personas %}
 <section>
-  <h2>Personalidad (persona/jarvis.md)</h2>
-  <form method="post" action="/persona">
-    <textarea name="content" rows="16">{{ persona }}</textarea>
+  <h2>{{ p.label }}</h2>
+  <form method="post" action="/persona/{{ p.key }}">
+    <textarea name="content" rows="{{ 16 if p.key == 'jarvis' else 8 }}">{{ p.content }}</textarea>
     <input type="password" name="password" placeholder="contraseña" required>
     <button>Guardar</button>
   </form>
-  <p class="hint">El commit de git se hace en el host: ver RUNBOOK.</p>
 </section>
-
-<section>
-  <h2>Últimos eventos</h2>
-  <table>
-    {% for e in events %}
-    <tr><td>{{ e.time }}</td><td>{{ e.kind }}</td><td><code>{{ e.payload }}</code></td></tr>
-    {% else %}
-    <tr><td colspan="3">Sin eventos todavía.</td></tr>
-    {% endfor %}
-  </table>
-</section>
+{% endfor %}
+<p class="hint">El commit de git se hace en el host: ver RUNBOOK.</p>
 
 {% endblock %}

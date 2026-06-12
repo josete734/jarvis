@@ -20,3 +20,9 @@ button { cursor: pointer; background: #1f6feb; border-color: #1f6feb; }
 form.inline { display: inline-block; }
 .hint { color: #8b949e; font-size: .8rem; }
 code { font-size: .8rem; color: #a5d6ff; word-break: break-all; }
+.bar { display: inline-block; width: 140px; height: 8px; background: #21262d;
+       border-radius: 4px; overflow: hidden; vertical-align: middle; margin-right: .5rem; }
+.bar span { display: block; height: 100%; background: #3fb950; transition: width .4s ease; }
+.bar span.hot { background: #f85149; }
+.user a { color: #58a6ff; text-decoration: none; }
+.user a:hover { text-decoration: underline; }
