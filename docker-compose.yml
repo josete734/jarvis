@@ -140,7 +140,7 @@ services:
   socket-proxy:
     image: tecnativa/docker-socket-proxy:v0.4.2   # el tag lleva prefijo 'v' (0.4.2 sin v no existe en Docker Hub)
     restart: unless-stopped
-    environment: [CONTAINERS=1]                    # GET/HEAD only (POST=0 default)
+    environment: [CONTAINERS=1, LOGS=1]            # GET/HEAD only (POST=0 default); LOGS para el visor del panel
     volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
     logging: *default-logging
 

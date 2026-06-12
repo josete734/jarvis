@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<section>
+  <h2>Logs · {{ name }}
+    <span class="hint">· <a href="/">← volver</a> · <a href="/logs/{{ name }}">recargar</a> · últimas 300 líneas</span>
+  </h2>
+  <pre class="logs">{{ logs }}</pre>
+</section>
+{% endblock %}

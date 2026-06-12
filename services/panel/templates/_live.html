@@ -21,9 +21,10 @@
     {% for c in containers %}
     <tr class="state-{{ c.state }}">
       <td>{{ c.name }}</td><td>{{ c.state }}</td><td>{{ c.status }}</td>
+      <td><a href="/logs/{{ c.name }}">logs</a></td>
     </tr>
     {% else %}
-    <tr><td colspan="3">Sin contenedores.</td></tr>
+    <tr><td colspan="4">Sin contenedores.</td></tr>
     {% endfor %}
   </table>
 </section>

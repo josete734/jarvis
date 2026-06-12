@@ -176,6 +176,16 @@ async def partial_live(request: Request):
     return templates.TemplateResponse(request, "_live.html", await _live_context())
 
 
+@app.get("/logs/{name}", response_class=HTMLResponse)
+async def view_logs(request: Request, name: str):
+    # Validar contra los contenedores reales (evita rutas arbitrarias al proxy).
+    containers = await docker_client.list_containers()
+    if name not in {c["name"] for c in containers}:
+        return HTMLResponse("Contenedor desconocido", status_code=404)
+    logs = await docker_client.get_logs(name, tail=300)
+    return templates.TemplateResponse(request, "logs.html", {"name": name, "logs": logs})
+
+
 @app.post("/persona/{key}")
 async def save_persona(key: str, content: str = Form(...), password: str = Form("")):
     if not _check_password(password):
