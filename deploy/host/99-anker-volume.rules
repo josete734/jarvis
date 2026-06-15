@@ -1,0 +1,3 @@
+# Anker PowerConf (291a:3301): al aparecer la tarjeta de sonido, fija el volumen de salida
+# (por defecto arranca al 16%, casi inaudible). Lanza un servicio que espera y ajusta.
+ACTION=="add", SUBSYSTEM=="sound", KERNEL=="card*", SUBSYSTEMS=="usb", ATTRS{idVendor}=="291a", ATTRS{idProduct}=="3301", TAG+="systemd", ENV{SYSTEMD_WANTS}+="anker-volume.service"

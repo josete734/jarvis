@@ -24,7 +24,7 @@ from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import PipelineTask
+from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.piper.tts import PiperTTSService, PiperTTSSettings
 from pipecat.transports.local.audio import (
@@ -39,6 +39,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
 )
+from pipecat.turns.user_mute.always_user_mute_strategy import AlwaysUserMuteStrategy
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 
 import events
@@ -48,6 +49,8 @@ from security import SecurityState, TranscriptWatcher
 from stt_factory import build_stt
 from tools import register_tools
 from wakeword_gate import WakeWordGate
+from echo_cancel import EchoCanceller, EchoCancelFilter, ReferenceTap
+from tts_factory import build_tts
 
 PROMPTS = Path("/prompts")
 PERSONA = Path("/persona")
@@ -109,14 +112,24 @@ def list_audio_devices() -> None:
 async def main() -> None:
     security = SecurityState()
 
+    # AEC software (livekit APM): solo cuando el hardware NO cancela el eco (p.ej.
+    # micro+altavoz separados). Con el Anker PowerConf (USB o BT) la AEC es por
+    # hardware -> SW_AEC=false. Conmutar SW_AEC/DISABLE_BARGE_IN según el dispositivo
+    # (futuro: seleccionable desde el panel).
+    # Rate de salida: ElevenLabs Flash rinde a 24 kHz; Piper (davefx) a 22050 y el
+    # transport remuestrea. Único valor para el transport y para el TTS.
+    audio_out_rate = int(os.getenv("AUDIO_OUT_RATE", "24000"))
+    sw_aec = os.getenv("SW_AEC", "false").lower() == "true"
+    aec = EchoCanceller(stream_delay_ms=int(os.getenv("AEC_STREAM_DELAY_MS", "120"))) if sw_aec else None
     transport = LocalAudioTransport(
         LocalAudioTransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
             audio_in_sample_rate=16000,           # openwakeword + whisper expect 16 kHz
-            audio_out_sample_rate=22050,          # davefx-medium native rate
-            input_device_index=_audio_index("AUDIO_INPUT_INDEX"),
-            output_device_index=_audio_index("AUDIO_OUTPUT_INDEX"),
+            audio_out_sample_rate=audio_out_rate,  # ElevenLabs 24k / Piper 22050 (remuestrea)
+            audio_in_filter=EchoCancelFilter(aec) if aec else None,  # AEC SW: limpia el micro antes del VAD
+            input_device_index=_audio_index("AUDIO_INPUT_INDEX", "jarvisin"),
+            output_device_index=_audio_index("AUDIO_OUTPUT_INDEX", "jarvisout"),
         )
     )
 
@@ -133,14 +146,18 @@ async def main() -> None:
         api_key=os.getenv("LITELLM_API_KEY", "sk-litellm"),
         base_url=os.getenv("LLM_BASE", "http://litellm:4000/v1"),
         model="jarvis-main",
+        params=OpenAILLMService.InputParams(
+            temperature=float(os.getenv("LLM_TEMPERATURE", "0.5")),
+            # Red de seguridad anti-divagación (la brevedad real la da el prompt):
+            # ~160 tokens ≈ 2-3 frases en castellano. Tope holgado, NO tijera.
+            # drop_params=true en LiteLLM tolera que un fallback no soporte el param.
+            max_completion_tokens=int(os.getenv("LLM_MAX_TOKENS", "160")),
+        ),
     )
 
-    # Firma verificada contra pipecat v1.3.0: el TTS embebido toma la voz vía
-    # PiperTTSSettings (no kwarg `voice`) y reutiliza /models/piper (download_models.sh).
-    tts = PiperTTSService(
-        settings=PiperTTSSettings(voice=os.getenv("PIPER_VOICE", "es_ES-davefx-medium")),
-        download_dir=Path("/models/piper"),
-    )
+    # TTS seleccionable (tts_factory): ElevenLabs Flash v2.5 (voz mayordomo es-ES) con
+    # Piper local de respaldo offline. Conmutable por env TTS_BACKEND.
+    tts = build_tts(audio_out_rate)
 
     schemas = register_tools(llm, security)
 
@@ -153,6 +170,15 @@ async def main() -> None:
         user_params=LLMUserAggregatorParams(
             vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
             # smart-turn v3.2 is the default stop strategy in 1.3.0 — do not disable.
+            # DISABLE_BARGE_IN=true silencia al usuario mientras el bot habla (evita la
+            # autointerrupción por eco cuando NO hay AEC hardware). Con el Anker (AEC
+            # hardware) se deja barge-in activo (DISABLE_BARGE_IN=false) -> se le puede
+            # cortar hablando.
+            user_mute_strategies=(
+                [AlwaysUserMuteStrategy()]
+                if os.getenv("DISABLE_BARGE_IN", "false").lower() == "true"
+                else []
+            ),
         ),
     )
 
@@ -169,6 +195,7 @@ async def main() -> None:
         # (acumula LLMTextFrame entre LLMFullResponseStart/EndFrame).
         ConversationLog(),
         tts,
+        *([ReferenceTap(aec)] if aec else []),  # AEC SW: TTS -> referencia del APM
         transport.output(),
         aggregators.assistant(),
     ]
@@ -180,7 +207,12 @@ async def main() -> None:
     # que sin "hey Jarvis" no fluye ningún frame y el watchdog de Pipecat (idle 300 s,
     # resetea con Bot/UserSpeakingFrame) cancelaría el worker -> reinicio cada 5 min.
     # Un asistente always-on idlea por diseño: desactivamos el idle timeout.
-    task = PipelineTask(Pipeline(processors), idle_timeout_secs=None)
+    task = PipelineTask(
+        Pipeline(processors),
+        # Métricas: mide TTFB de STT/LLM/TTS para optimizar latencia con datos reales.
+        params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
+        idle_timeout_secs=None,
+    )
 
     # Internal HTTP server: presence events (Fase 5), DND toggle, event log.
     await events.start(task, security, port=int(os.getenv("EVENTS_PORT", "8070")))

@@ -1,0 +1,8 @@
+[Unit]
+Description=Niveles del Anker PowerConf (salida 80%, captura 40% anti-saturacion del wake word)
+After=sound.target
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 2
+ExecStart=/usr/bin/amixer -c PowerConf sset PCM 80% unmute
+ExecStartPost=/usr/bin/amixer -c PowerConf sset Mic 40%

@@ -4,7 +4,7 @@
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential portaudio19-dev libasound2-dev alsa-utils curl \
+        build-essential portaudio19-dev libasound2-dev libasound2-plugin-bluez alsa-utils curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

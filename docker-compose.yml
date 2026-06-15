@@ -55,6 +55,8 @@ services:
     environment:
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_USER=n8n                      # el superusuario de postgres es 'n8n', no 'postgres' (fix S4)
+      - DB_POSTGRESDB_DATABASE=n8n                  # sin esto n8n usaba db/user 'postgres' (inexistente) -> 440 reinicios
       - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASS}
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=true
@@ -69,7 +71,7 @@ services:
   orchestrator:
     build: ./services/orchestrator
     restart: unless-stopped
-    devices: ["/dev/snd:/dev/snd"]
+    devices: ["/dev/snd:/dev/snd"]                 # Anker PowerConf por USB = tarjeta ALSA "PowerConf"
     group_add: ["audio"]
     volumes:
       - /var/lib/jarvis/models:/models             # models live on the M.2 (NVMe)
@@ -88,11 +90,21 @@ services:
       - EVENTS_SECRET=${EVENTS_SECRET}
       - MEM0_DIR=/data/mem0
       - VISION_BASE=http://vision:8089
-      - STT_BACKEND=whisper                        # whisper | openai (openai → parakeet, Fase 2-3)
+      # --- Audio: modo Anker PowerConf (AEC por HARDWARE) ---
+      - SW_AEC=false                               # sin AEC software (el Anker cancela el eco); true para micro+altavoz separados
+      - DISABLE_BARGE_IN=true                       # sala con voz de fondo (pareja, ruido) interrumpe el TTS; el bot termina su frase
+      - WAKE_THRESHOLD=0.5                         # Anker: su DSP baja el score del wake word (pico ~0.29); umbral 0.5->0.2
+      - AEC_STREAM_DELAY_MS=290                     # (solo si SW_AEC=true) retardo loopback medido con altavoces ON
+      - AEC_NS=false                               # (solo si SW_AEC=true) NS del APM rompe el wake word con el ruido alto del Yeti
+      - AEC_HPF=false
+      - STT_BACKEND=whisper                        # Whisper small (multilingüe ES); Parakeet de la imagen era solo-inglés (regresión)
       - STT_BASE_URL=http://stt-parakeet:5092/v1   # puerto verificado del servidor parakeet
       - WHISPER_MODEL=small
-      - PIPER_VOICE=es_ES-davefx-medium
-      - WAKE_MODEL_PATH=/models/openwakeword/hey_jarvis_v0.1.onnx
+      - PIPER_VOICE=es_ES-davefx-medium            # respaldo offline
+      # --- Voz: Piper local (davefx-medium, es-ES). ElevenLabs retirado: 100% self-hosted ---
+      - TTS_BACKEND=piper                          # local (ElevenLabs fuera; XTTS pendiente de GPU)
+      - AUDIO_OUT_RATE=22050                        # nativo de Piper davefx-medium (evita remuestreo extra)
+      - WAKE_MODEL_PATH=/models/openwakeword/hey_mycroft_v0.1.onnx
       - WAKE_TIMEOUT_SECS=45
       - MEM0_ENABLED=false                         # switch to true in Fase 3
       - EVENTS_PORT=8070
