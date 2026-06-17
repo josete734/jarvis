@@ -1,7 +1,7 @@
 ---
 title: "Asistentes de voz domésticos *local-first* con agencia segura"
 subtitle: "Diseño, implementación y evaluación de un mayordomo digital sobre hardware de consumo. El sistema J.A.R.V.I.S. como caso de estudio"
-author: "José"
+author: ["José Ángel Castillo Díez", "Trabajo de investigación · Homelab"]
 date: "Junio de 2026"
 lang: es-ES
 documentclass: report
@@ -16,10 +16,11 @@ linkcolor: RoyalBlue
 urlcolor: RoyalBlue
 toccolor: black
 titlepage: true
-titlepage-color: "12233F"
-titlepage-text-color: "FFFFFF"
+titlepage-color: "0C1A33"
+titlepage-text-color: "F4F1E8"
 titlepage-rule-color: "C9A227"
-titlepage-rule-height: 2
+titlepage-rule-height: 8
+titlepage-top-rule-height: 0
 book: true
 listings: false
 code-block-font-size: \footnotesize
