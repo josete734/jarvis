@@ -1,0 +1,9 @@
+[Unit]
+Description=Reinicia el kiosko J.A.R.V.I.S. cada noche (estabilidad)
+
+[Timer]
+OnCalendar=*-*-* 05:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -66,4 +66,20 @@ echo "      (fstab by LABEL/UUID, with 'nofail' for the USB)."
 echo "==> render group GID (set RENDER_GID in .env):"
 getent group render || echo "render group not found — check intel drivers"
 
+echo "==> Host scripts, units y sudoers (capa de acciones / voz-off / HUD / backup)"
+HOST_DIR="$(cd "$(dirname "$0")/host" && pwd)"
+install -o root -g root -m 0755 "$HOST_DIR/jarvis-research.py"  /usr/local/bin/jarvis-research.py
+install -o root -g root -m 0755 "$HOST_DIR/jarvis-power.sh"     /usr/local/bin/jarvis-power.sh
+install -o root -g root -m 0755 "$HOST_DIR/jarvis-cmd-guard.py" /usr/local/bin/jarvis-cmd-guard.py
+install -o root -g root -m 0440 "$HOST_DIR/jarvis-actions.sudoers" /etc/sudoers.d/jarvis-actions
+visudo -cf /etc/sudoers.d/jarvis-actions || { echo "sudoers inválido"; exit 1; }
+for unit in jarvis-research.service jarvis-kiosk.service jarvis-kiosk-restart.service \
+            jarvis-kiosk-restart.timer jarvis-backup.service jarvis-backup.timer; do
+    install -o root -g root -m 0644 "$HOST_DIR/$unit" "/etc/systemd/system/$unit"
+done
+systemctl daemon-reload
+systemctl enable --now jarvis-research.service jarvis-kiosk.service \
+    jarvis-kiosk-restart.timer jarvis-backup.timer
+echo "NOTE: el backup necesita el disco USB montado en /mnt/backup y 'restic init' (ver scripts/backup.sh)."
+
 echo "Done. Re-login (or 'newgrp docker') for group changes to apply."

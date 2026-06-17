@@ -8,8 +8,11 @@ terminar por /event/say (que enruta a voz o Telegram según presencia).
 """
 
 import os
+import time
 
 import aiohttp
+
+from audit import audit
 
 BRIDGE = os.getenv("RESEARCH_BRIDGE", "http://host.docker.internal:8077")
 
@@ -18,15 +21,17 @@ async def encargar(tarea: str, security=None) -> dict:
     tarea = (tarea or "").strip()
     if not tarea:
         return {"status": "error", "mensaje": "¿Qué quiere que haga, señor?"}
+    rid = str(int(time.time()))                    # correlaciona audit_log <-> log de acción del puente
     try:
         async with aiohttp.ClientSession() as s:
             async with s.post(
                 f"{BRIDGE}/do",
-                json={"tarea": tarea},
+                json={"tarea": tarea, "id": rid},
                 headers={"X-Jarvis-Events-Secret": os.getenv("EVENTS_SECRET", "")},
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as r:
                 if r.status == 202:
+                    audit("jarvis", "action.delegated", "encargar", rid, {"tarea": tarea[:300]})
                     return {"status": "en_marcha",
                             "mensaje": f"De acuerdo, señor. Me pongo con ello: {tarea}. Le aviso al terminar."}
                 if r.status == 403:

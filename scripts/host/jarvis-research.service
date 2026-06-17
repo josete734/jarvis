@@ -1,0 +1,19 @@
+[Unit]
+Description=J.A.R.V.I.S. research bridge (delega investigaciones a Claude Code)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jose
+Group=jose
+Environment=HOME=/home/jose
+Environment=ORCH_EVENTS=http://127.0.0.1:8070
+Environment=RESEARCH_PORT=8077
+WorkingDirectory=/home/jose
+ExecStart=/usr/bin/python3 /usr/local/bin/jarvis-research.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

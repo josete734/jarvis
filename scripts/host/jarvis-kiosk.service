@@ -1,0 +1,21 @@
+[Unit]
+Description=J.A.R.V.I.S. HUD kiosk (cage + chromium, horizontal)
+After=systemd-user-sessions.service snapd.service docker.service
+Conflicts=getty@tty1.service
+[Service]
+Environment=TZ=Europe/Madrid
+Environment=KIOSK_BRIGHTNESS=1.0
+Type=simple
+User=jose
+PAMName=login
+TTYPath=/dev/tty2
+TTYReset=yes
+TTYVHangup=yes
+StandardInput=tty-fail
+ExecStartPre=/bin/sh -c 'until curl -sf http://localhost:8080/health >/dev/null 2>&1; do sleep 2; done'
+ExecStart=/usr/bin/cage -- /usr/local/bin/jarvis-kiosk.sh
+Restart=on-failure
+RestartSec=12
+RestartSec=5
+[Install]
+WantedBy=multi-user.target

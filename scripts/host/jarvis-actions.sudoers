@@ -1,0 +1,10 @@
+# Jarvis (tool `encargar` -> Claude Code ejecutándose como jose) puede gestionar el
+# homelab SIN contraseña. Acotado a docker/systemctl/apt a propósito: NO es
+# "NOPASSWD: ALL" (root arbitrario), para que una orden mal entendida por el micro
+# no pueda destruir el sistema. La confirmación en Jarvis sigue siendo obligatoria.
+jose ALL=(ALL) NOPASSWD: /usr/bin/docker, /usr/bin/systemctl, /usr/bin/apt, /usr/bin/apt-get
+
+# Reposo de recursos del HUD ("Descansa"/"Revive" por Telegram): apaga/enciende la
+# pantalla del kiosko y libera la CPU de Chromium. Acotado a este único script y a
+# sus dos argumentos válidos.
+jose ALL=(ALL) NOPASSWD: /usr/local/bin/jarvis-power.sh sleep, /usr/local/bin/jarvis-power.sh wake

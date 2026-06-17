@@ -23,6 +23,8 @@ restic backup --tag jarvis \
     /srv/jarvis/mem0 \
     /srv/jarvis/n8n \
     /srv/jarvis/faces \
+    /srv/jarvis/logs/events.db \
+    /srv/jarvis/logs/aprendido.md \
     /srv/jarvis/postgres-dump.sql \
     "$REPO_DIR/persona" \
     "$REPO_DIR/prompts" \

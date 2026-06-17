@@ -1,0 +1,6 @@
+[Unit]
+Description=Reinicio nocturno del kiosko J.A.R.V.I.S. (libera memoria de Chromium)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl restart jarvis-kiosk.service
