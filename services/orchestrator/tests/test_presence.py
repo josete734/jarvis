@@ -2,7 +2,14 @@
 
 import time
 
-from proactive import PRESENCE_TTL, REMOTE_WINDOW, PresenceState
+import pytest
+
+# proactive importa pipecat; en el CI mínimo (sin pipecat) se salta este módulo.
+# En el contenedor, con las deps reales, corre completo.
+proactive = pytest.importorskip("proactive")
+PRESENCE_TTL = proactive.PRESENCE_TTL
+REMOTE_WINDOW = proactive.REMOTE_WINDOW
+PresenceState = proactive.PresenceState
 
 
 def test_failsafe_present_without_vision():

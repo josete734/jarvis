@@ -2,8 +2,15 @@
 
 import asyncio
 
+import pytest
+
 from security_core import SecurityState
-from tools.registry import dispatch, tool_specs
+
+# tools.registry arrastra pipecat (tools/__init__); en el CI mínimo se salta este módulo.
+# En el contenedor, con las deps reales, corre completo.
+registry = pytest.importorskip("tools.registry")
+dispatch = registry.dispatch
+tool_specs = registry.tool_specs
 
 
 def test_specs_include_key_tools():

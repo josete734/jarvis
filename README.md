@@ -1,5 +1,7 @@
 # 🎩 J.A.R.V.I.S. — un mayordomo de voz que vive en tu casa
 
+[![CI](https://github.com/josete734/jarvis/actions/workflows/ci.yml/badge.svg)](https://github.com/josete734/jarvis/actions/workflows/ci.yml)
+
 Un asistente de voz personal, en **español de España**, que funciona **entero en un mini-PC tuyo** —
 sin enviar tu voz a Amazon, Google ni nadie. Le hablas, te entiende, piensa y te responde como un
 mayordomo discreto. Y además hace cosas: te avisa, busca, recuerda y hasta gestiona el servidor.
@@ -39,6 +41,7 @@ datos personales **se quedan en casa**.
 
 Y por su cuenta:
 - **Aprende solo** de vuestras conversaciones (qué te gusta, tu gente, tus rutinas) — y **olvida** lo que ya no usas.
+- **Te pide permiso para apuntar lo que aprende**: te llega una propuesta **por Telegram con botones** (✅ Aprobar · ❌ Rechazar · ✏️ Reformular). Solo si la apruebas se añade a tu perfil — y **cualquier cambio se puede deshacer**.
 - **Es proactivo con cabeza**: te avisa de lo importante, pero no es un pesado (por defecto, calla).
 - **Sabe si estás en casa**: si estás delante te habla por voz; si escribes por Telegram (estás fuera), te responde por el móvil.
 - **Una pantallita** (HUD) muestra qué está haciendo, tu agenda, la música de Spotify y el gasto.
@@ -77,6 +80,7 @@ Y por su cuenta:
 - **Cerebro**: **GLM-5** a través de OpenCode Go (con LiteLLM y varios modelos de reserva por si uno falla).
 - **Tareas difíciles**: delega en **Claude Code** (investigación y acciones en el servidor, con guardarraíles).
 - **Memoria**: base de datos local (SQLite) con un sistema que prioriza lo que usas y archiva lo que no.
+- **Gobernanza**: lo que aprende pasa por una cola de aprobación; cada cambio del perfil queda en un **registro inmutable** (auditoría) y se puede **deshacer** (rollback).
 - **Todo en Docker**: cada pieza en su contenedor, orquestado con `docker compose`.
 - **Panel web** (Cloudflare Tunnel + Access) y **bot de Telegram** para controlarlo desde fuera.
 
@@ -126,6 +130,7 @@ tests/            batería de pruebas automáticas (68, todas en verde ✅)
 | [`docs/FASES.md`](docs/FASES.md) | **Estado actual del proyecto** por fases |
 | [`docs/PLAN_FINAL.md`](docs/PLAN_FINAL.md) | El plan maestro original (técnico, a fondo) |
 | [`docs/PLAN_MEJORAS.md`](docs/PLAN_MEJORAS.md) | Mejoras robadas de proyectos similares (openclaw, hermes) |
+| [`docs/PLAN_PAPERCLIP.md`](docs/PLAN_PAPERCLIP.md) | Gobernanza (auditoría + rollback + cola de aprobación) y backlog priorizado |
 | [`docs/CAMERA_FASE_C.md`](docs/CAMERA_FASE_C.md) | Cómo encender la cámara cuando la tengas |
 | [`docs/RUNBOOK.md`](docs/RUNBOOK.md) | Operación del día a día |
 
