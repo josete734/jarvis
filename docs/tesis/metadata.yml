@@ -1,0 +1,28 @@
+---
+title: "Asistentes de voz domésticos *local-first* con agencia segura"
+subtitle: "Diseño, implementación y evaluación de un mayordomo digital sobre hardware de consumo. El sistema J.A.R.V.I.S. como caso de estudio"
+author: "José"
+date: "Junio de 2026"
+lang: es-ES
+documentclass: report
+classoption: [oneside]
+toc: true
+toc-own-page: true
+toc-title: "Índice"
+numbersections: true
+secnumdepth: 2
+colorlinks: true
+linkcolor: RoyalBlue
+urlcolor: RoyalBlue
+toccolor: black
+titlepage: true
+titlepage-color: "12233F"
+titlepage-text-color: "FFFFFF"
+titlepage-rule-color: "C9A227"
+titlepage-rule-height: 2
+book: true
+listings: false
+code-block-font-size: \footnotesize
+geometry: "top=2.5cm,bottom=2.5cm,left=3cm,right=2.5cm"
+abstract-title: "Resumen"
+---

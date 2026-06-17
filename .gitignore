@@ -19,3 +19,7 @@ speech_test/
 
 # local data lives OUTSIDE the repo (/srv/jarvis, /var/lib/jarvis/models)
 data/
+
+# build de la tesis (artefactos pandoc)
+docs/tesis/build/
+docs/tesis/_check.txt
