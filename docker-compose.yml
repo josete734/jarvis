@@ -73,6 +73,8 @@ services:
     restart: unless-stopped
     devices: ["/dev/snd:/dev/snd"]                 # Anker PowerConf por USB = tarjeta ALSA "PowerConf"
     group_add: ["audio"]
+    extra_hosts: ["host.docker.internal:host-gateway"]   # para llegar al puente de investigación (Claude Code en el host)
+    ports: ["127.0.0.1:8070:8070"]                 # events: el puente del host llama a /event/say (voz proactiva)
     volumes:
       - /var/lib/jarvis/models:/models             # models live on the M.2 (NVMe)
       - /srv/jarvis/mem0:/data/mem0                # history.db local de mem0 (persistente; Fase 3)
@@ -93,13 +95,15 @@ services:
       # --- Audio: modo Anker PowerConf (AEC por HARDWARE) ---
       - SW_AEC=false                               # sin AEC software (el Anker cancela el eco); true para micro+altavoz separados
       - DISABLE_BARGE_IN=true                       # sala con voz de fondo (pareja, ruido) interrumpe el TTS; el bot termina su frase
-      - WAKE_THRESHOLD=0.5                         # Anker: su DSP baja el score del wake word (pico ~0.29); umbral 0.5->0.2
+      - WAKE_THRESHOLD=0.2                         # Anker: su DSP baja el score del wake word (pico ~0.29); umbral 0.5->0.2
       - AEC_STREAM_DELAY_MS=290                     # (solo si SW_AEC=true) retardo loopback medido con altavoces ON
       - AEC_NS=false                               # (solo si SW_AEC=true) NS del APM rompe el wake word con el ruido alto del Yeti
       - AEC_HPF=false
       - STT_BACKEND=whisper                        # Whisper small (multilingüe ES); Parakeet de la imagen era solo-inglés (regresión)
+      - STT_TUNED=true                             # TunedWhisperSTTService: tuning es-ES (initial_prompt+beam5+condition_off); medido mejor en voz real
       - STT_BASE_URL=http://stt-parakeet:5092/v1   # puerto verificado del servidor parakeet
-      - WHISPER_MODEL=small
+      - WHISPER_MODEL=small                        # medium medido EN VIVO 6-7s (segmentos ~20s x RTF0.32) -> inviable en CPU; small+tuning va fino (~0.5s). Modelo grande = via iGPU/OpenVINO
+      - WHISPER_CPU_THREADS=12                      # CPU ociosa (LLM en nube) -> usa los 12 hilos
       - PIPER_VOICE=es_ES-davefx-medium            # respaldo offline
       # --- Voz: Piper local (davefx-medium, es-ES). ElevenLabs retirado: 100% self-hosted ---
       - TTS_BACKEND=piper                          # local (ElevenLabs fuera; XTTS pendiente de GPU)
@@ -108,6 +112,10 @@ services:
       - WAKE_TIMEOUT_SECS=45
       - MEM0_ENABLED=false                         # switch to true in Fase 3
       - EVENTS_PORT=8070
+      - RESEARCH_BRIDGE=http://host.docker.internal:8077   # puente a Claude Code (investigaciones)
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN:-}                  # push de avisos al móvil (bot mycroft_neo_bot)
+      - TELEGRAM_OWNER_ID=${TELEGRAM_OWNER_ID:-342573153}  # Fase A: solo responde a este chat (José)
+      - PROACTIVE_ECHO_TELEGRAM=${PROACTIVE_ECHO_TELEGRAM:-false}  # Fase B: avisos 'info' al móvil aun estando presente
       - HF_HOME=/models/hf                         # whisper/e5 caches persist on NVMe
       - AUDIO_INPUT_INDEX=${AUDIO_INPUT_INDEX}
       - AUDIO_OUTPUT_INDEX=${AUDIO_OUTPUT_INDEX}
@@ -167,6 +175,13 @@ services:
       - EVENTS_SECRET=${EVENTS_SECRET}
       - ORCHESTRATOR_EVENTS=http://orchestrator:8070
       - TZ=${TZ}
+      - HUD_CALENDAR_ICS=${HUD_CALENDAR_ICS:-}        # URL ICS secreta (Google Calendar iCal privado) para la agenda del HUD
+      - HUD_WEATHER_LAT=${HUD_WEATHER_LAT:-41.1549}   # tiempo del HUD (Reus por defecto)
+      - HUD_WEATHER_LON=${HUD_WEATHER_LON:-1.1087}
+      - HUD_WEATHER_PLACE=${HUD_WEATHER_PLACE:-Reus}
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}            # widget Now Playing
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET:-}
+      - SPOTIFY_REDIRECT=${SPOTIFY_REDIRECT:-https://jarvis.calahierbas.casa/spotify/callback}
     volumes:
       - /srv/jarvis/logs:/logs
       - ./persona:/persona                         # rw: panel edits; orchestrator mounts :ro

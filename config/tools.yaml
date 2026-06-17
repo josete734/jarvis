@@ -38,14 +38,120 @@ tools:
     parameters:
       pregunta: { type: string, required: false, description: "Qué quiere saber el usuario de la imagen" }
 
-  crear_recordatorio:
-    n8n_webhook: recordatorio
-    type: side_effect
-    enabled: false           # enable in Fase 4, after importing the n8n workflow
-    timeout_secs: 15
+  consultar_agenda:
+    builtin: consultar_agenda
+    type: read_only
+    enabled: true
+    timeout_secs: 12
     description: >-
-      Crea un recordatorio o tarea para el usuario. Acción con efecto real:
-      el sistema pedirá confirmación verbal antes de ejecutarla.
+      Consulta la agenda/calendario del usuario y devuelve sus PRÓXIMOS eventos,
+      con cuándo es cada uno y si alguno está en curso ahora. Úsala siempre que
+      pregunte por su calendario, agenda, citas, reuniones, o qué tiene hoy/mañana.
+    parameters: {}
+
+  investigar:
+    builtin: investigar
+    type: read_only
+    enabled: true
+    timeout_secs: 12
+    description: >-
+      Delega una INVESTIGACIÓN A FONDO a tu equipo de investigación (mucho más
+      potente que tú). Úsala cuando José pida investigar, analizar en profundidad,
+      comparar opciones, o preguntas complejas/actuales que requieran varias
+      búsquedas y razonamiento (no un simple dato puntual: para eso usa web_search).
+      Es ASÍNCRONA: arranca y tú avisas "me pongo con ello"; el resultado llega solo
+      por voz al cabo de un rato. Pasa el tema concreto a investigar.
     parameters:
-      texto: { type: string, required: true, description: "Qué recordar" }
-      fecha: { type: string, required: false, description: "Fecha/hora ISO o en lenguaje natural" }
+      tema: { type: string, required: true, description: "Qué investigar, en una frase clara" }
+
+  encargar:
+    builtin: encargar
+    type: side_effect        # ACCIÓN real -> SIEMPRE requiere confirmación (§9.1.1)
+    enabled: true
+    timeout_secs: 12
+    description: >-
+      Encarga una TAREA REAL a tu operador Claude Code, que puede crear/editar
+      archivos y EJECUTAR comandos en el homelab de José (como el usuario jose, sin
+      sudo). Úsala cuando José pida HACER algo, no solo informar: crear un script,
+      editar un archivo, automatizar una tarea, montar o arreglar algo en el
+      servidor. NO la uses para preguntas o datos (usa web_search/investigar). Es
+      ASÍNCRONA y SIEMPRE requiere su confirmación explícita antes de ejecutarse:
+      repítele la tarea concreta y pídele que confirme. Pasa la tarea detallada.
+    parameters:
+      tarea: { type: string, required: true, description: "Qué hacer, concreto y detallado" }
+
+  programar_tarea:
+    builtin: programar_tarea
+    type: read_only
+    enabled: true
+    timeout_secs: 10
+    description: >-
+      Programa una tarea RECURRENTE que harás tú solo y avisarás solo si hay algo
+      (p.ej. "cada mañana dame el tiempo", "cada hora mira si tengo algo urgente en la
+      agenda", "cada lunes recuérdame X"). DISTINTO de crear_recordatorio (eso es UNA vez).
+      Pasa 'cuando' SIEMPRE normalizado a uno de estos formatos exactos: 'cada:30m',
+      'cada:2h', 'diario:08:00' (HH:MM 24h), o 'semanal:lun:09:00' (lun/mar/mie/jue/vie/sab/dom).
+      Convierte tú el lenguaje natural a ese formato. En 'tarea' pon qué hacer, claro.
+    parameters:
+      cuando: { type: string, required: true, description: "Frecuencia normalizada: cada:30m | diario:08:00 | semanal:lun:09:00" }
+      tarea: { type: string, required: true, description: "Qué hacer/comprobar, en una frase" }
+
+  listar_tareas:
+    builtin: listar_tareas
+    type: read_only
+    enabled: true
+    timeout_secs: 8
+    description: >-
+      Lista las tareas programadas recurrentes de José (las de programar_tarea). Úsala
+      cuando pregunte qué tiene programado o qué avisos recurrentes le has puesto.
+    parameters: {}
+
+  cancelar_tarea:
+    builtin: cancelar_tarea
+    type: read_only
+    enabled: true
+    timeout_secs: 8
+    description: >-
+      Cancela una tarea programada recurrente. Pasa en 'cual' unas palabras de la tarea
+      a cancelar (p.ej. "el tiempo", "la agenda"). Úsala cuando pida quitar/parar un aviso recurrente.
+    parameters:
+      cual: { type: string, required: true, description: "Palabras clave de la tarea a cancelar" }
+
+  crear_recordatorio:
+    builtin: crear_recordatorio
+    type: read_only
+    enabled: true
+    timeout_secs: 10
+    description: >-
+      Guarda un recordatorio que dirás por voz a su hora. Úsala cuando José pida
+      que le recuerdes algo. Calcula 'cuando' a partir del momento actual que
+      tienes inyectado y pásalo en ISO exacto (AAAA-MM-DD HH:MM); p.ej. "mañana a
+      las nueve" -> la fecha de mañana y "09:00". Si no dice hora, pídesela en una
+      frase antes de llamar.
+    parameters:
+      texto: { type: string, required: true, description: "Qué recordar, en una frase" }
+      cuando: { type: string, required: true, description: "Fecha y hora en ISO AAAA-MM-DD HH:MM" }
+
+  recordar:
+    builtin: recordar
+    type: read_only
+    enabled: true
+    timeout_secs: 10
+    description: >-
+      Busca en TUS CONVERSACIONES PASADAS con José lo que te contó otras veces.
+      Úsala cuando pregunte por algo que ya os disteis dicho, o cuando necesites
+      recordar un dato suyo que no esté en el contexto actual ("¿qué te conté
+      de...?", "¿te acuerdas de...?"). Pasa unas palabras clave de lo que buscas.
+    parameters:
+      consulta: { type: string, required: true, description: "Qué recordar (palabras clave)" }
+
+  briefing_matutino:
+    builtin: briefing_matutino
+    type: read_only
+    enabled: true
+    timeout_secs: 10
+    description: >-
+      Da el resumen del día (tiempo, agenda de hoy y recordatorios). Llámala cuando
+      José diga "buenos días" o pida su resumen/parte del día. Léelo cálido y breve,
+      como un mayordomo al abrir las cortinas. Lo quita además de la pantalla.
+    parameters: {}

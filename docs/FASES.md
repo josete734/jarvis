@@ -1,66 +1,76 @@
-# Checklist por fases (PLAN_FINAL §11)
+# Estado de las fases (PLAN_FINAL §11)
 
-## Fase 0 — Base (sem. 1)
-- [ ] Ubuntu Server 24.04 instalado; particionado §5.0 (NVMe: /, docker, modelos, swapfile · SATA: /srv/jarvis)
-- [ ] `sudo bash scripts/install_host.sh` (zram, governor, grupos, docker, ufw, fail2ban, tailscale)
-- [ ] SSH solo llaves verificado → `PasswordAuthentication no`
-- [ ] USB de backup montado en /mnt/backup (fstab `nofail`) + repo restic init
-- [ ] `arecord -l` / `aplay -l` / `v4l2-ctl --list-devices` detectan los dispositivos
-- [ ] **PUERTA: `scripts/test_aec.sh` pasa (delta ≤ ~6 dB)** — si no, decidir plan B/C antes de seguir
-- [ ] `.env` completo (claves, RENDER_GID, allowlist panel)
+> **Última actualización: 2026-06-17 (cierre de sprint S7).**
+> Leyenda: ✅ hecho · 🟡 hecho con cambios respecto al plan · ⏳ pendiente · ❌ descartado a propósito · 🔜 continuo
 
-## Fase 1 — Oídos y voz (sem. 2)
-- [ ] `make build && make models`
-- [ ] `make list-audio` → fijar índices si hace falta
-- [ ] Arranque del orquestador sin errores de imports (ajustar TODO(Fase 1) si Pipecat movió algo)
-- [ ] "Hey Jarvis" despierta el gate (log score) y vuelve a dormir a los 45 s
-- [ ] Eco hablado: lo que dices se transcribe y Piper lo lee
-- [ ] CPU en reposo < 10 %; el bot NO se auto-interrumpe
+## Resumen ejecutivo
 
-## Fase 2 — Cerebro (sem. 3)
-- [ ] Developer tier activado en Groq (método de pago)
-- [ ] Conversación natural < 2 s percibidos, barge-in funciona
-- [ ] **A/B/C**: 20 turnos guionizados a ciegas (llama-3.3-70b vs gpt-oss-120b [vs qwen3-32b])
-      con tasa de fallos de tools y coste/turno → decidir `jarvis-main`
-- [ ] Personalidad v1 validada (humor seco, sin listas por voz)
+| Fase | Qué | Estado |
+|------|-----|:------:|
+| 0 · Base | Host, particiones, AEC, `.env` | ✅ |
+| 1 · Oídos y voz | Wake word, STT, TTS, sin auto-interrupción | ✅ |
+| 2 · Cerebro | LLM natural + personalidad | 🟡 (Groq → **GLM-5** vía OpenCode Go) |
+| 2-3 · STT Parakeet | Sustituir Whisper | ❌ (Parakeet solo inglés → revertido) |
+| 3 · Memoria | Recuerdo entre sesiones, reflexión | 🟡 (sin mem0: **FTS5 + Curator + almacén con recall/decay**) |
+| 4 · Acciones e internet | Recordatorios, confirmación, web, SSRF | ✅ |
+| 5 · Presencia y visión | YOLO, caras, saludo al llegar | ⏳ (construido y apagado; falta la cámara) |
+| 6 · Centro de control | Panel, métricas, DND | ✅ (vía Cloudflare, no tailscale) |
+| 7 · Refinamiento | Speaker-ID, voz móvil, MCP… | 🔜 (varias piezas ya adelantadas, ver abajo) |
 
-## Fase 2-3 — STT parakeet
-- [ ] Perfil `stt-parakeet` arriba, `STT_BACKEND=openai`
-- [ ] Sin regresión en español coloquial; latencia STT ~0,25-0,8 s
-- [ ] RAM total < 8 GB (si aprieta: canary-180m-flash o rollback)
+## Construido DESPUÉS del plan (sprint S6-S7, no estaba en las fases originales)
 
-## Fase 3 — Memoria (sem. 4)
-- [ ] `MEM0_ENABLED=true`; self-test del prefijo e5 OK en logs
-- [ ] Recuerda hechos entre sesiones (test: dile algo hoy, pregúntalo mañana)
-- [ ] Metadata `origin` en memorias; extracción omitida en turnos con web (probar)
-- [ ] Timer de reflexión activo; `perfil_usuario.md` se actualiza y se commitea
-- [ ] Cuarentena: la reflexión marca memorias sospechosas (probar con una trampa)
+- ✅ **Delegación a Claude Code**: `investigar` (solo lectura) y `encargar` (acciones reales en el homelab, con sudo acotado + guardia de comandos + doble confirmación inteligente).
+- ✅ **Proactividad**: heartbeat + gate único (DND, horario, presupuesto, dedup) + brain-review.
+- ✅ **Telegram bidireccional**: chatear con Jarvis por texto (mismo cerebro/tools/memoria). Si escribes por Telegram, no te responde por voz (estás fuera).
+- ✅ **Routing por presencia** (Fase B de la cámara): presente→voz, ausente→Telegram, con fail-safe.
+- ✅ **Cron en lenguaje natural + monitores** (`[SILENT]`): "cada mañana dame el tiempo", "cada hora avísame si tengo algo urgente".
+- ✅ **Memoria que aprende y olvide**: almacén estructurado con recall (lo que usas se queda) y decay (lo que no, se archiva sin borrar).
+- ✅ **Auto-mejora con aprobación**: el Curator propone, José aprueba en el panel.
+- ✅ **Suite de tests (68)** + verificación completa del sistema.
 
-## Fase 4 — Acciones e internet (sem. 5)
-- [ ] Workflow `recordatorio` importado con verificación HMAC (probar firma inválida → 401)
-- [ ] `crear_recordatorio` habilitado: pide confirmación verbal y solo ejecuta tras tu "sí"
-- [ ] `confirmar_accion` sin confirmación real del usuario → DENEGADO (probar)
-- [ ] web_search + web_read funcionan; "¿qué ha pasado hoy con X?" busca y cita fuente
-- [ ] Guard SSRF: `web_read http://192.168.1.1` y `http://169.254.169.254` → bloqueados
-- [ ] **Página trampa propia** (con instrucciones inyectadas) NO consigue disparar un webhook ni guardar memoria
+## Pendiente real
+- ⏳ **Fase C (cámara)**: enchufar webcam USB + enrolar la cara → encender la visión. Todo lo demás está hecho. Ver `docs/CAMERA_FASE_C.md`.
+- 🔜 **Mejoras futuras** (Fase 7): voz desde otra habitación (satélite ESP32 / móvil WebRTC), speaker-ID, wake word propia.
+- ❌ **Observabilidad Prometheus/Grafana**: descartado por sobre-ingeniería para un homelab personal (el HUD ya da métricas básicas).
 
-## Fase 5 — Presencia y visión (sem. 6)
-- [ ] `clinfo` dentro del contenedor vision lista la UHD 630
-- [ ] YOLO compila en GPU (log); post-proceso NMS implementado (TODO del esqueleto)
-- [ ] Caras enroladas en /faces; reconoce a 1-3 personas
-- [ ] `DISABLE_PRESENCE=false`; saluda al llegar con histéresis (no saluda dos veces)
-- [ ] `ver_camara` habilitada; revalidar modelo de visión vigente en Groq
-- [ ] CPU de visión en reposo < 10 %
+---
 
-## Fase 6 — Centro de control (sem. 7)
-- [ ] `tailscale serve` para panel (443) y n8n (8443); login por identidad del tailnet
-- [ ] Estado de servicios, eventos, editor de persona, toggles de tools y DND operativos
-- [ ] Métricas de latencia por etapa persistidas y visibles (TODO del esqueleto)
+## Detalle del plan original (checklist histórico)
 
-## Fase 7 — Refinamiento (continuo)
-- [ ] Speaker-ID (sherpa-onnx CAM++) como gate de acciones sensibles + PIN verbal
-- [ ] STT propio con onnx-asr (quitar hop HTTP) o canary-180m plan B
-- [ ] Supertonic 3 A/B vs Piper · EmbeddingGemma (re-indexar) · mem0 2.x
-- [ ] Egress-deny de red para web_read · suite de páginas trampa
-- [ ] Voz móvil (SmallWebRTC) · MCP · YOLO26 · wake word propia
-- [ ] Upgrade Ubuntu 26.04.1 (≥ ago-2026) · revisar deprecations Groq cada fase
+<details><summary>Fases 0-7 del PLAN_FINAL — checklist de origen</summary>
+
+### Fase 0 — Base · ✅
+Host Ubuntu, particionado NVMe/SATA, docker/ufw/fail2ban, audio detectado. La "puerta AEC"
+se resolvió con el **Anker PowerConf (AEC por hardware)** en vez del test formal.
+
+### Fase 1 — Oídos y voz · ✅
+Wake word **"hey Mycroft"** (openWakeWord) + STT faster-whisper small + Piper TTS davefx +
+sin auto-interrupción (mute strategy). Verificado E2E por voz.
+
+### Fase 2 — Cerebro · 🟡
+Conversación natural y personalidad de mayordomo ✅. **Cambio**: de Groq a **GLM-5 vía OpenCode Go**
+(litellm), fallbacks deepseek/groq. Latencia variable (pasarela remota).
+
+### Fase 2-3 — STT Parakeet · ❌
+Probado y **revertido**: Parakeet era solo inglés. Se mantiene Whisper small.
+
+### Fase 3 — Memoria · 🟡
+Sin mem0. **FTS5** sobre events.db (`recordar`) + **Curator** (aprende hechos durables) +
+**almacén `facts`** con recall/decay real + perfil de usuario con aprobación.
+
+### Fase 4 — Acciones e internet · ✅
+`crear_recordatorio` con confirmación verbal, `confirmar_accion`, web_search/web_read, guard SSRF,
+defensa anti prompt-injection.
+
+### Fase 5 — Presencia y visión · ⏳
+YOLO11n (OpenVINO/iGPU) + InsightFace + pipeline de presencia: **todo construido**, apagado
+(`DISABLE_PRESENCE=true`), sin cara enrolada. Falta la cámara física.
+
+### Fase 6 — Centro de control · ✅
+Panel en producción vía **Cloudflare Tunnel + Access**, HUD kiosko con actividad, agenda, Spotify,
+uso de tokens; editor de personas, toggles de tools y DND.
+
+### Fase 7 — Refinamiento · 🔜
+Continuo. Ya adelantadas piezas nuevas (delegación, proactividad, Telegram, cron, memoria).
+
+</details>

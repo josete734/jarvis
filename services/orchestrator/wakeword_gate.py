@@ -35,6 +35,7 @@ class WakeWordGate(FrameProcessor):
         model_path: str,
         threshold: float = 0.5,
         wake_timeout_secs: float = 45.0,
+        probe=None,                      # VoiceStateObserver | None (estado HUD en vivo)
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -44,6 +45,7 @@ class WakeWordGate(FrameProcessor):
         self._awake = False
         self._last_wake = 0.0
         self._sleep_task: asyncio.Task | None = None
+        self._probe = probe
 
         framework = os.getenv("WAKE_FRAMEWORK", "onnx")
         self._model = Model(
@@ -69,6 +71,8 @@ class WakeWordGate(FrameProcessor):
             await asyncio.sleep(secs)
             self._awake = False
             self._model.reset()
+            if self._probe is not None:
+                self._probe.go_idle()
             logger.info("WakeWordGate: back to sleep")
         except asyncio.CancelledError:
             pass
@@ -116,6 +120,8 @@ class WakeWordGate(FrameProcessor):
                 self._buffer.clear()
                 self._model.reset()
                 self._renew_keepalive()
+                if self._probe is not None:
+                    self._probe.on_wake(score)
                 logger.info(f"Wake word detected (score={score:.2f})")
                 # TODO(Fase 1): optional audible ack — queue a short
                 # TTSSpeakFrame("¿Sí?") via the task if it feels natural.

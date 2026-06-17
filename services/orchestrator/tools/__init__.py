@@ -16,7 +16,7 @@ from loguru import logger
 
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 
-from . import camera, n8n, web
+from . import agenda, briefing, camera, cron_tools, encargar, memoria, n8n, reminders, research, web
 
 TOOLS_YAML = Path("/config/tools.yaml")
 
@@ -24,6 +24,15 @@ BUILTINS = {
     "web_search": web.web_search,
     "web_read": web.web_read,
     "ver_camara": camera.ver_camara,
+    "consultar_agenda": agenda.consultar_agenda,
+    "investigar": research.investigar,
+    "encargar": encargar.encargar,
+    "crear_recordatorio": reminders.crear_recordatorio,
+    "recordar": memoria.recordar,
+    "briefing_matutino": briefing.briefing_matutino,
+    "programar_tarea": cron_tools.programar_tarea,
+    "listar_tareas": cron_tools.listar_tareas,
+    "cancelar_tarea": cron_tools.cancelar_tarea,
 }
 
 
@@ -61,9 +70,15 @@ def register_tools(llm, security) -> list[FunctionSchema]:
             continue
 
         side_effect = spec.get("type") == "side_effect"
+        known = set((spec.get("parameters") or {}).keys())   # args válidos del schema
 
-        async def handler(params, _impl=impl, _name=name, _side=side_effect):
-            args = dict(params.arguments or {})
+        async def handler(params, _impl=impl, _name=name, _side=side_effect, _known=known):
+            # El LLM a veces INVENTA argumentos (p.ej. consultar_agenda(pendiente=False)).
+            # Filtramos a los del schema para que una alucinación no reviente la tool.
+            raw = dict(params.arguments or {})
+            args = {k: v for k, v in raw.items() if k in _known}
+            if raw.keys() - _known:
+                logger.warning(f"tool {_name}: ignoro args inventados {sorted(raw.keys() - _known)}")
             try:
                 if _side or security.tainted:
                     # §9.1.1 + §9.1.6: defer to verbal confirmation outside the LLM.
@@ -74,7 +89,9 @@ def register_tools(llm, security) -> list[FunctionSchema]:
                     result = await _impl(**args)
             except Exception as e:
                 logger.exception(f"tool {_name} failed")
-                result = {"status": "error", "mensaje": str(e)}
+                # No filtrar la jerga técnica a la voz: el LLM debe responder con naturalidad.
+                result = {"status": "error",
+                          "mensaje": "No he podido completar esa consulta ahora mismo."}
             await params.result_callback(result)
 
         # TODO(Fase 1): confirm register_function kwargs on 1.3.0

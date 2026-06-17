@@ -7,19 +7,21 @@
 model_list:
   - model_name: jarvis-main
     litellm_params:
-      model: groq/llama-3.3-70b-versatile
-      api_key: os.environ/GROQ_API_KEY
-
+      model: openai/glm-5                       # OpenCode Go: GLM-5, español+tools impecable
+      api_base: https://opencode.ai/zen/go/v1   # endpoint Go (compatible OpenAI); clave OPENCODE_API_KEY en .env
+      api_key: os.environ/OPENCODE_API_KEY
+      extra_body: {"reasoning_effort": "none"}  # SIN razonamiento (~1.5s, sin truncar). extra_body = litellm lo reenvía verbatim (drop_params lo descartaría)
   - model_name: jarvis-fb1
     litellm_params:
-      model: cerebras/gpt-oss-120b
-      api_key: os.environ/CEREBRAS_API_KEY
-      # alternative: cerebras/zai-glm-4.7 (preview; pin Spanish in system prompt)
+      model: openai/deepseek-v4-flash           # OpenCode Go: barato y rápido, respaldo del mismo proveedor
+      api_base: https://opencode.ai/zen/go/v1
+      api_key: os.environ/OPENCODE_API_KEY
+      extra_body: {"reasoning_effort": "none"}
 
   - model_name: jarvis-fb2
     litellm_params:
-      model: gemini/gemini-2.5-flash
-      api_key: os.environ/GEMINI_API_KEY
+      model: groq/llama-3.3-70b-versatile       # último recurso: Groq 70B (cupo nocturno) si OpenCode falla/llega a límite
+      api_key: os.environ/GROQ_API_KEY
 
   # mem0 fact extraction — cheap model with its own Groq per-model quota (§3.3)
   - model_name: jarvis-memory

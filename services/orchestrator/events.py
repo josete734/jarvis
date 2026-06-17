@@ -28,6 +28,20 @@ from pipecat.frames.frames import TTSSpeakFrame
 DB_PATH = Path("/logs/events.db")
 SECRET = os.getenv("EVENTS_SECRET", "")
 _conn: sqlite3.Connection | None = None
+_gate = None                     # ProactiveGate (Fase B): routing voz/Telegram por presencia
+
+
+def set_gate(gate) -> None:
+    """Lo llama bot.py tras crear el ProactiveGate; permite a /event/* enrutar por presencia."""
+    global _gate
+    _gate = gate
+
+
+def _greeting() -> str:
+    from datetime import datetime
+    h = datetime.now().hour
+    saludo = "Buenos días" if 5 <= h < 12 else ("Buenas tardes" if 12 <= h < 20 else "Buenas noches")
+    return f"{saludo}, señor. Bienvenido."
 
 
 def _db() -> sqlite3.Connection:
@@ -66,16 +80,49 @@ async def start(task, security, *, port: int = 8070) -> None:
         logger.warning("EVENTS_SECRET no definido: /dnd y /event/presence quedan deshabilitados")
 
     async def presence(request: web.Request) -> web.Response:
+        """Latido del sensor de visión (Fase B). Mantiene el estado presente/ausente y
+        saluda SOLO en la transición ausente->presente (con cooldown). Acepta:
+        {"person":"jose"} (visto), o {"beat":true} (vivo pero sin ver a nadie)."""
         if not _authorized(request):
             return web.json_response({"error": "unauthorized"}, status=401)
         data = await request.json()
-        person = data.get("person", "alguien")
+        person = data.get("person")
         log_event("presence", data)
+        from proactive import PRESENCE, GREET_COOLDOWN
+        was_present = PRESENCE.is_present(person) if person else True
+        PRESENCE.beat(person)                       # refresca last_seen / vision viva
+        if person and not was_present:              # llegada real (estaba ausente)
+            if time.time() - PRESENCE.last_greeted.get(person, 0) >= GREET_COOLDOWN:
+                PRESENCE.last_greeted[person] = time.time()
+                if _gate is not None:
+                    await _gate.say(_greeting(), key=f"greet:{person}", tier="ambient", person=person)
+                elif not security.dnd:
+                    await task.queue_frames([TTSSpeakFrame(_greeting())])
+        return web.json_response({"status": "ok", "present": True})
+
+    async def say(request: web.Request) -> web.Response:
+        """Voz proactiva: hace que Jarvis diga un texto (lo usa el puente de
+        investigación al terminar). Enruta por presencia vía el gate (presente->voz,
+        ausente->Telegram); si no hay gate aún, cae al comportamiento previo."""
+        if not _authorized(request):
+            return web.json_response({"error": "unauthorized"}, status=401)
+        data = await request.json()
+        text = (data.get("text") or "").strip()
+        if not text:
+            return web.json_response({"error": "no text"}, status=400)
+        log_event("proactive_say", {"text": text[:300]})
+        if _gate is not None:
+            ok = await _gate.say(text, tier="info")
+            return web.json_response({"status": "routed" if ok else "suppressed"})
+        try:
+            import telegram
+            await telegram.send(text)
+        except Exception:
+            pass
         if security.dnd:
             return web.json_response({"status": "dnd"})
-        # TODO(Fase 5): personalize via persona/relacion.md and time of day.
-        await task.queue_frames([TTSSpeakFrame(f"Bienvenido a casa, {person}.")])
-        return web.json_response({"status": "greeted"})
+        await task.queue_frames([TTSSpeakFrame(text)])
+        return web.json_response({"status": "spoken"})
 
     async def dnd(request: web.Request) -> web.Response:
         if not _authorized(request):
@@ -90,6 +137,7 @@ async def start(task, security, *, port: int = 8070) -> None:
 
     app = web.Application()
     app.router.add_post("/event/presence", presence)
+    app.router.add_post("/event/say", say)
     app.router.add_post("/dnd", dnd)
     app.router.add_get("/health", health)
 

@@ -38,6 +38,30 @@ def build_stt():
         "large-v3-turbo": Model.LARGE_V3_TURBO,
     }.get(name, Model.SMALL)
 
+    # STT_TUNED=true -> TunedWhisperSTTService (tuning REAL: en Pipecat 1.3.0 los params
+    # del constructor de WhisperSTTService NO llegan a transcribe(), por eso se subclasea).
+    # Default false -> comportamiento idéntico al de siempre. Validar por voz al activarlo.
+    if os.getenv("STT_TUNED", "false").lower() == "true":
+        from stt_tuned import TunedWhisperSTTService
+
+        init_prompt = os.getenv(
+            "WHISPER_INIT_PROMPT",
+            "Conversación en español de España con JARVIS, el asistente personal de José. "
+            "Lugares habituales: Barcelona, Madrid, Reus, Tarragona.",
+        )
+        opts = dict(
+            beam_size=int(os.getenv("WHISPER_BEAM", "5")),
+            temperature=[0.0, 0.2, 0.4, 0.6],
+            condition_on_previous_text=False,   # corta el "envenenamiento" entre turnos
+            initial_prompt=init_prompt,         # sesga hacia es-ES y nombres del dominio
+            vad_filter=False,
+        )
+        logger.info(f"STT: TunedWhisper {name} INT8 (cpu_threads=6) + tuning es-ES")
+        return TunedWhisperSTTService(
+            model=model, device="cpu", compute_type="int8", language=Language.ES,
+            transcribe_opts=opts, cpu_threads=int(os.getenv("WHISPER_CPU_THREADS", "6")),
+        )
+
     logger.info(f"STT: faster-whisper {name} INT8 (CPU)")
     # Firmas verificadas contra pipecat v1.3.0: language es el enum Language, no str.
     return WhisperSTTService(

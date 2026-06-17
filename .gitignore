@@ -1,6 +1,10 @@
 # secrets
 .env
 *.restic-pass
+config/spotify_refresh.txt        # refresh token de Spotify (NUNCA al repo público)
+*refresh*.txt
+*secret*
+*.npy                             # embeddings de cara (biometría)
 
 # python
 __pycache__/

@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>J.A.R.V.I.S. · HUD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@200;300;400;500;600&family=Geist+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#070809; --panel:rgba(255,255,255,.03); --line:rgba(130,190,255,.18);
+    --line2:rgba(130,190,255,.10); --cyan:#5cefff; --cyan-dim:#46cfe3;
+    --text:#f2f6fb; --dim:#aab6c4; --dim2:#7e8b99;
+    --ok:#3fe9b0; --warn:#ffcf5c; --bad:#ff6b6b;
+    --mono:'Geist Mono',ui-monospace,monospace; --sans:'Geist',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;cursor:none}   /* kiosko solo-vista: sin puntero */
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--text); font-family:var(--sans);
+    overflow:hidden; -webkit-font-smoothing:antialiased; letter-spacing:.01em;
+    background-image:
+      radial-gradient(1200px 600px at 50% -10%, rgba(63,233,255,.07), transparent 60%),
+      radial-gradient(900px 500px at 100% 110%, rgba(63,233,255,.04), transparent 55%),
+      linear-gradient(rgba(130,190,255,.022) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(130,190,255,.022) 1px, transparent 1px);
+    background-size:auto,auto,44px 44px,44px 44px;
+  }
+  body::after{ /* grano sutil */
+    content:""; position:fixed; inset:0; pointer-events:none; opacity:.035; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* lienzo: por defecto ocupa el viewport tal cual; en vertical se gira (ver abajo) */
+  #stage{position:relative;width:100vw;height:100vh}
+  .wrap{height:100%;display:grid;grid-template-rows:1fr auto;padding:26px 34px 20px;gap:20px}
+
+  /* HEADER */
+  header{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:baseline;gap:16px}
+  .logo{font-weight:200;font-size:30px;letter-spacing:.42em;padding-left:.42em}
+  .logo b{color:var(--cyan);font-weight:400}
+  .tag{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.22em;text-transform:uppercase}
+  .status{display:flex;align-items:center;gap:24px}
+  .pill{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok)}
+  .clock{font-family:var(--mono);font-size:22px;font-weight:300;color:var(--text);font-variant-numeric:tabular-nums}
+
+  /* MAIN GRID */
+  main{display:grid;grid-template-columns:1.05fr 1.4fr;gap:20px;min-height:0}
+  .col{display:grid;gap:18px;min-height:0}
+  .left{grid-template-rows:auto auto 1fr}
+  .card{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 22px;backdrop-filter:blur(4px);overflow:hidden}
+  .card::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--line),transparent)}
+  .label{font-family:var(--mono);font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--dim2);margin-bottom:14px;display:flex;justify-content:space-between}
+
+  /* CORE */
+  .core-card{display:flex;align-items:center;gap:26px}
+  .core{position:relative;width:128px;height:128px;flex:none}
+  .ring{position:absolute;inset:0;border-radius:50%;border:1px solid var(--cyan);opacity:.18}
+  .ring.r2{inset:14px;opacity:.30;border-style:dashed;animation:spin 24s linear infinite}
+  .ring.r3{inset:30px;opacity:.5;animation:spin 16s linear infinite reverse}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .core-core{position:absolute;inset:44px;border-radius:50%;background:radial-gradient(circle at 50% 40%,var(--cyan),var(--cyan-dim) 60%,transparent 72%);box-shadow:0 0 40px rgba(63,233,255,.55),0 0 90px rgba(63,233,255,.25);animation:breathe 3.6s ease-in-out infinite}
+  @keyframes breathe{0%,100%{transform:scale(.86);opacity:.8}50%{transform:scale(1.05);opacity:1}}
+
+  /* === coreografía por estado real del pipeline (#stage[data-state]) === */
+  #stage{--lvl:0}                       /* nivel de audio 0..1, lo escribe el JS */
+  #stage[data-state="wake"]         .core-core{animation:wakepulse .9s ease-out infinite}
+  #stage[data-state="listening"]    .core-core{animation:breathe 1.5s ease-in-out infinite;
+        box-shadow:0 0 calc(38px + var(--lvl)*72px) rgba(63,233,255,calc(.45 + var(--lvl)*.5)),0 0 90px rgba(63,233,255,.22)}
+  #stage[data-state="transcribing"] .core-core,
+  #stage[data-state="thinking"]     .core-core{animation:breathe 1.05s ease-in-out infinite}
+  #stage[data-state="speaking"]     .core-core{animation:saybeat .5s ease-in-out infinite}
+  #stage[data-state="transcribing"] .ring.r2,
+  #stage[data-state="thinking"]     .ring.r2{animation-duration:5s}
+  #stage[data-state="thinking"]     .ring.r3{animation-duration:3s}
+  #stage[data-state="speaking"]     .ring.r3{animation-duration:6s}
+  @keyframes wakepulse{0%{transform:scale(.86);opacity:.7}45%{transform:scale(1.14);opacity:1}100%{transform:scale(.86);opacity:.7}}
+  @keyframes saybeat{0%,100%{transform:scale(.9);opacity:.85}50%{transform:scale(1.08);opacity:1}}
+  /* color del rótulo de estado según fase */
+  #stage[data-state="speaking"] .core-info .st{color:#7df0ff}
+  #stage[data-state="thinking"] .core-info .st,
+  #stage[data-state="transcribing"] .core-info .st{color:var(--warn)}
+  #stage[data-state="wake"] .core-info .st{color:#9affe0}
+  /* medidor de audio (canvas) bajo el núcleo */
+  .wavebox{width:100%;max-width:260px;height:30px;margin-top:12px}
+  .wavebox canvas{width:100%;height:100%;display:block}
+  /* telemetría ambiental */
+  .teleline{font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;color:var(--dim2);
+            margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center;line-height:1.5}
+  .teleline b{color:var(--dim);font-weight:400}
+  /* uso de OpenCode Go (tokens/coste) — visible en la columna izquierda */
+  .usage{margin-top:14px;padding-top:13px;border-top:1px solid var(--line2);font-family:var(--mono);text-align:center}
+  .usage .ul{font-size:9px;letter-spacing:.24em;text-transform:uppercase;color:var(--cyan-dim);margin-bottom:8px}
+  .usage .uv{font-size:20px;font-weight:300;color:var(--text);font-variant-numeric:tabular-nums;line-height:1}
+  .usage .uv b{color:var(--cyan);font-weight:400}
+  .usage .us{font-size:10.5px;color:var(--dim);margin-top:6px;letter-spacing:.05em}
+  .usage .ubar{height:4px;border-radius:3px;background:rgba(255,255,255,.06);margin:9px auto 0;max-width:200px;overflow:hidden}
+  .usage .ubar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--cyan-dim),var(--cyan));box-shadow:0 0 8px rgba(63,233,255,.5);transition:width .8s}
+  /* === VITALES DEL SISTEMA: jerarquía RAM/NVMe (gauges) > carga > SATA === */
+  .vitals-card{display:flex;flex-direction:column}
+  .gauges{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:8px;align-content:center;justify-items:center}
+  .gauge{display:flex;flex-direction:column;align-items:center;gap:5px}
+  /* clamp en vw: bajo la rotación 90°, el alto visible = 100vw -> el gauge escala al alto real */
+  .gwrap{position:relative;width:clamp(62px,16.5vw,108px);height:clamp(62px,16.5vw,108px)}
+  .gwrap svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+  .g-track{fill:none;stroke:rgba(130,190,255,.10);stroke-width:6.5}
+  .g-val{fill:none;stroke:var(--cyan);stroke-width:6.5;stroke-linecap:round;
+         transition:stroke-dashoffset .8s cubic-bezier(.2,.8,.2,1),stroke .5s;filter:drop-shadow(0 0 4px rgba(63,233,255,.55))}
+  .g-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2px}
+  .g-num{font-family:var(--mono);font-size:22px;font-weight:300;color:var(--text);font-variant-numeric:tabular-nums;line-height:1}
+  .g-num small{font-size:11px;color:var(--dim)}
+  .g-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--cyan-dim)}
+  .g-detail{font-family:var(--mono);font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums}
+  /* pie: carga (secundaria, con tendencia) y SATA (terciaria, tenue) */
+  .vitals-card .gauges{gap:6px}
+  .vitals-foot{display:flex;align-items:center;gap:16px;padding-top:8px;margin-top:2px;border-top:1px solid var(--line2)}
+  .vmini{display:flex;align-items:center;gap:8px;font-family:var(--mono)}
+  .vmini .vk{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim2)}
+  .vmini .vv{font-size:13px;color:var(--text);font-variant-numeric:tabular-nums}
+  .vmini #loadspark{width:64px;height:16px;display:block}
+  .vmini.sata{margin-left:auto;opacity:.6}              /* SATA: lo menos importante */
+  .vmini.sata .vv{font-size:11px;color:var(--dim)}
+  .vbar{width:46px;height:4px;border-radius:3px;background:rgba(255,255,255,.06);overflow:hidden}
+  .vbar i{display:block;height:100%;background:var(--dim);border-radius:3px;transition:width .8s}
+  /* latencias por etapa (TTFB real) */
+  .lat{font-family:var(--mono);font-size:10px;letter-spacing:.04em;color:var(--dim2);margin-top:7px;display:flex;gap:12px;justify-content:center;min-height:13px}
+  .lat span{opacity:0;transition:opacity .4s}.lat span.on{opacity:1}
+  .lat b{color:var(--cyan-dim);font-weight:400}
+
+  /* cabecera: reloj grande + fecha + tiempo */
+  .clockwrap{text-align:right;line-height:1}
+  .clock{font-family:var(--mono);font-weight:200;font-size:30px;color:var(--text);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+  .date{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);margin-top:5px}
+  .weather{display:flex;align-items:center;gap:9px;font-family:var(--mono);color:var(--dim)}
+  .weather .ic{font-size:21px;filter:saturate(.7)}
+  .weather .tmp{font-size:19px;color:var(--text);font-weight:300}
+  .weather .wd{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim2);line-height:1.4}
+  .weather .wd b{color:var(--dim);font-weight:400}
+
+  /* sparklines CPU/RAM */
+  .spark{width:100%;height:18px;display:block;margin-top:7px;opacity:.9}
+
+  /* alerta: algún servicio caído */
+  .pill.degr{color:var(--bad)}
+  .pill.degr .dot{background:var(--bad)!important;box-shadow:0 0 10px var(--bad)!important;animation:blink 1s steps(2) infinite}
+
+  /* intro de arranque (overlay, se desvanece a los ~2.6s) */
+  #boot{position:absolute;inset:0;z-index:50;background:radial-gradient(circle at 50% 45%,#0a1418,#040506 70%);
+        display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;transition:opacity .8s ease;}
+  #boot.off{opacity:0;pointer-events:none}
+  #boot .bl{font-family:var(--mono);font-weight:200;font-size:38px;letter-spacing:.5em;padding-left:.5em;color:var(--text);opacity:0;animation:bootin .9s ease forwards}
+  #boot .bl b{color:var(--cyan)}
+  #boot .bb{width:240px;height:2px;background:rgba(63,233,255,.15);border-radius:2px;overflow:hidden}
+  #boot .bb i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--cyan-dim),var(--cyan));box-shadow:0 0 12px var(--cyan);animation:bootbar 2.1s cubic-bezier(.6,.05,.2,1) forwards}
+  #boot .bt{font-family:var(--mono);font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:var(--dim);opacity:0;animation:fade .6s .5s forwards}
+  @keyframes bootin{from{opacity:0;letter-spacing:1em}to{opacity:1;letter-spacing:.5em}}
+  @keyframes bootbar{from{width:0}to{width:100%}}
+
+  /* WIDGET SPOTIFY "Now Playing" (flotante, solo mientras suena) */
+  #spotify{position:absolute;right:34px;bottom:72px;z-index:80;display:flex;align-items:center;gap:20px;
+    background:rgba(9,13,17,.95);border:1px solid var(--line);border-radius:18px;padding:18px 28px 18px 18px;
+    backdrop-filter:blur(10px);box-shadow:0 14px 44px rgba(0,0,0,.6);max-width:560px;
+    opacity:0;transform:translateY(16px);pointer-events:none;transition:opacity .5s ease,transform .5s cubic-bezier(.2,.8,.2,1)}
+  #spotify.on{opacity:1;transform:none}
+  #spotify .sp-logo{color:#1ed760;font-size:30px;flex:none}
+  #spotify .sp-art{width:96px;height:96px;border-radius:12px;background:#111 center/cover no-repeat;flex:none;box-shadow:0 0 22px rgba(30,215,96,.28)}
+  #spotify .sp-info{min-width:0;flex:1}
+  #spotify .sp-title{font-size:23px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.01em;line-height:1.15}
+  #spotify .sp-artist{font-family:var(--mono);font-size:15px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:6px}
+  #spotify .sp-bar{height:5px;border-radius:3px;background:rgba(255,255,255,.13);margin-top:14px;overflow:hidden}
+  #spotify .sp-bar i{display:block;height:100%;width:0;background:#1ed760;border-radius:3px;box-shadow:0 0 10px rgba(30,215,96,.5);transition:width 1s linear}
+
+  /* OVERLAY DE BRIEFING MATUTINO (7-9h o hasta «Mycroft, buenos días») */
+  #briefing{position:absolute;inset:0;z-index:100;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;
+    background:#06090d;background-image:radial-gradient(circle at 50% 38%,rgba(63,233,255,.06),transparent 60%)}
+  #briefing.on{display:flex;animation:fade .9s both}
+  #stage[data-brief="1"] .wrap{visibility:hidden}   /* oculta el HUD detrás del briefing */
+  #briefing .bgreet{font-weight:200;font-size:42px;letter-spacing:.02em;color:var(--text)}
+  #briefing .bgreet b{color:var(--cyan);font-weight:400}
+  #briefing .bdate{font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim)}
+  #briefing .bwx{font-family:var(--mono);font-size:24px;font-weight:300;color:var(--text);display:flex;align-items:center;gap:13px;margin-top:4px}
+  #briefing .bwx .bi{font-size:34px;filter:saturate(.8)}
+  #briefing .bevs{display:flex;flex-direction:column;gap:9px;font-family:var(--mono);font-size:16px;color:var(--text);margin-top:6px}
+  #briefing .be{display:flex;gap:16px;justify-content:center;align-items:baseline}
+  #briefing .be .bt{color:var(--cyan);font-variant-numeric:tabular-nums;min-width:52px;text-align:right}
+  #briefing .bhint{font-family:var(--mono);font-size:11.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan-dim);margin-top:14px;animation:breathe 2.6s ease-in-out infinite}
+
+  .core-info .st{font-family:var(--mono);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan);transition:color .4s}
+  .core-info .sub{font-size:13px;color:var(--dim);margin-top:8px;line-height:1.5;max-width:34ch}
+
+  /* METRICS */
+  .metrics{display:grid;grid-template-columns:1fr 1fr;gap:14px 26px}
+  .metric .mlabel{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);margin-bottom:7px}
+  .metric .mval{font-family:var(--mono);font-size:21px;font-weight:300;color:var(--text);font-variant-numeric:tabular-nums}
+  .metric .mval small{font-size:12px;color:var(--dim)}
+  .bar{height:5px;border-radius:4px;background:rgba(255,255,255,.06);margin-top:9px;overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--cyan-dim),var(--cyan));box-shadow:0 0 12px rgba(63,233,255,.5);transition:width .8s cubic-bezier(.2,.8,.2,1)}
+  .bar i.hot{background:linear-gradient(90deg,#b5832a,var(--warn))}
+  .bar i.crit{background:linear-gradient(90deg,#8c2a2a,var(--bad))}
+
+  /* SERVICES */
+  .svc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 14px;max-height:100%;overflow:hidden}
+  .svc{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:12.5px;color:var(--dim);padding:4px 0}
+  .svc .sd{width:6px;height:6px;border-radius:50%;flex:none}
+  .svc.up .sd{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+  .svc.down .sd{background:var(--bad);box-shadow:0 0 8px var(--bad);animation:blink 1.1s steps(2) infinite}
+  .svc.up{color:var(--text)}
+  .svc.idle{color:var(--dim2);opacity:.6} .svc.idle .sd{background:var(--dim2);box-shadow:none}
+  /* ACTIVIDAD: stepper del pipeline en vivo (qué hace Jarvis) */
+  .svc-card{display:flex;flex-direction:column}
+  .steps{display:flex;flex-direction:column;gap:13px;margin:2px 0 4px}
+  .step{position:relative;display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:13.5px;letter-spacing:.03em;color:var(--dim2);transition:color .3s}
+  .step .sdot{width:9px;height:9px;border-radius:50%;background:rgba(130,190,255,.18);flex:none;transition:all .3s}
+  /* línea que une los pasos */
+  .step:not(:last-child)::before{content:"";position:absolute;left:4px;top:16px;width:1px;height:13px;background:var(--line)}
+  .step.done{color:var(--dim)} .step.done .sdot{background:var(--cyan-dim);box-shadow:0 0 5px var(--cyan-dim)}
+  .step.active{color:var(--text)} .step.active .sdot{background:var(--cyan);box-shadow:0 0 11px var(--cyan);animation:breathe 1.1s ease-in-out infinite}
+  /* tira de servicios en la barra inferior */
+  .fsvc{display:flex;align-items:center;gap:9px}
+  .fsvclabel{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim2)}
+  #fsvc{display:flex;gap:5px}
+  #fsvc .fd{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 5px var(--ok)}
+  #fsvc .fd.down{background:var(--bad);box-shadow:0 0 6px var(--bad);animation:blink 1s steps(2) infinite}
+  #fsvc .fd.idle{background:var(--dim2);box-shadow:none}
+  /* previsión a 3 días (rellena el hueco bajo servicios) */
+  .svc-card{display:flex;flex-direction:column}
+  .svc-card .svc-grid{flex:none}
+  .fc3{margin-top:auto;padding-top:16px;border-top:1px solid var(--line2)}
+  .fc3 .nlabel{font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim2);margin-bottom:13px}
+  /* HOY protagonista: temp actual grande + icono + máx/mín */
+  .fctoday{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+  .fctoday .ficxl{font-size:40px;line-height:1;filter:saturate(.8)}
+  .fctoday .fttxt{display:flex;flex-direction:column;gap:4px}
+  .fctoday .ftbig{font-family:var(--mono);font-size:33px;font-weight:200;color:var(--text);line-height:1;font-variant-numeric:tabular-nums}
+  .fctoday .ftdesc{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+  .fctoday .ftmm{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--dim);text-align:right;line-height:1.5;font-variant-numeric:tabular-nums}
+  .fcdays{display:flex;flex-direction:column;gap:13px}
+  .fcrow{display:flex;align-items:center;gap:12px}
+  .fcrow .fday{font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;color:var(--cyan-dim);width:40px;flex:none}
+  .fcrow .fic{font-size:21px;width:28px;text-align:center;flex:none;filter:saturate(.75)}
+  .fcrow .ftemp{font-family:var(--mono);font-size:15px;color:var(--text);font-variant-numeric:tabular-nums;margin-left:auto;letter-spacing:.02em}
+  .fcrow .ftemp .lo{color:var(--dim2)}
+  @keyframes blink{50%{opacity:.25}}
+
+  /* FEED */
+  /* AGENDA / próximos eventos */
+  .agenda-card{display:flex;flex-direction:column;min-height:0}
+  /* HERO: evento próximo o en curso, destacado */
+  #agHero{margin-bottom:13px}
+  .agh{position:relative;border:1px solid var(--line);border-radius:12px;padding:11px 14px 12px;overflow:hidden;
+       background:linear-gradient(180deg,rgba(63,233,255,.055),rgba(63,233,255,.012));animation:rise .5s cubic-bezier(.2,.8,.2,1) both}
+  .agh::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--cal,var(--cyan));box-shadow:0 0 10px var(--cal,var(--cyan))}
+  .agh.live{border-color:rgba(63,233,176,.35);background:linear-gradient(180deg,rgba(63,233,176,.07),rgba(63,233,176,.015))}
+  .aghbadge{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan-dim)}
+  .agh.live .aghbadge{color:var(--ok)}
+  .aghbadge .lp{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 9px var(--ok);animation:breathe 1.3s ease-in-out infinite}
+  .aghtitle{font-size:16.5px;color:var(--text);margin:8px 0 6px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .aghwhen{font-family:var(--mono);font-size:11.5px;letter-spacing:.02em;color:var(--cyan)}
+  .agh.live .aghwhen{color:var(--ok)}
+  .aghwhen b{font-weight:500}
+  .agenda{flex:1;overflow:hidden;display:flex;flex-direction:column;gap:11px;mask-image:linear-gradient(#000 88%,transparent)}
+  .ev{display:flex;align-items:center;gap:13px;animation:rise .5s cubic-bezier(.2,.8,.2,1) both}
+  .ev .when{display:flex;flex-direction:column;width:50px;flex:none;text-align:right;line-height:1.15;border-right:1px solid var(--line);padding-right:12px}
+  .ev .evd{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;color:var(--cyan);text-transform:uppercase}
+  .ev .evt{font-family:var(--mono);font-size:15px;color:var(--text);font-weight:300;font-variant-numeric:tabular-nums;margin-top:2px}
+  .ev .evs{flex:1;position:relative;padding-left:15px;font-size:14.5px;color:var(--text);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ev .evs::before{content:"";position:absolute;left:0;top:.5em;width:7px;height:7px;border-radius:50%;
+        background:var(--cal,var(--cyan));box-shadow:0 0 7px var(--cal,var(--cyan))}  /* color = calendario de origen */
+  .ev.soon .evd{color:var(--warn)} .ev.soon .evt{color:#ffe6a8}
+  .feed-card{display:flex;flex-direction:column;min-height:0}
+  .feed{flex:1;overflow:hidden;display:flex;flex-direction:column;gap:13px;mask-image:linear-gradient(transparent,#000 7%,#000 100%)}
+  .msg{display:flex;gap:13px;animation:rise .5s cubic-bezier(.2,.8,.2,1) both}
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .msg .who{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;width:64px;flex:none;padding-top:3px;text-align:right}
+  .msg .bubble{flex:1;font-size:15px;line-height:1.5;color:var(--text)}
+  .msg .t{font-family:var(--mono);font-size:10px;color:var(--dim2);margin-top:4px;letter-spacing:.05em}
+  .msg.user .who{color:var(--dim)}
+  .msg.jarvis .who{color:var(--cyan)}
+  .msg.jarvis .bubble{color:#cfeff7}
+  .msg.sys .who{color:var(--dim2)} .msg.sys .bubble{color:var(--dim);font-style:italic;font-size:13px}
+  .empty{color:var(--dim2);font-family:var(--mono);font-size:13px;text-align:center;margin:auto}
+
+  /* BARRA DE ESTADO INFERIOR (antes era la cabecera) */
+  footer{display:flex;justify-content:space-between;align-items:center;gap:20px;
+         border-top:1px solid var(--line2);padding-top:12px}
+  .fleft{display:flex;align-items:center;gap:22px}
+  .fbrand{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim2)}
+  footer .pill{font-size:12px}
+  footer .live{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--cyan)}
+  footer .live .d{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan);animation:breathe 1.6s ease-in-out infinite}
+  .fclock{display:flex;align-items:baseline;gap:13px}
+  .fclock .clock{font-size:25px}
+  .fclock .date{margin:0;font-size:11px}
+  .fade{animation:fade .9s both} @keyframes fade{from{opacity:0}to{opacity:1}}
+  [data-stagger]{animation:fade .8s both}
+
+  /* === TIRA ANCHA HORIZONTAL (1920x480): 4 paneles en fila === */
+  @media (orientation:landscape) and (max-height:620px){
+    .wrap{padding:16px 26px 12px;gap:12px;grid-template-rows:1fr auto}
+    header .logo{font-size:24px;letter-spacing:.36em}
+    .clock{font-size:19px}
+    main{grid-template-columns:1fr .92fr .76fr 1.38fr;grid-template-rows:1fr;gap:14px}
+    .left{display:contents}
+    .col.right{display:grid;grid-template-rows:minmax(0,1.3fr) minmax(0,1fr);gap:12px;min-height:0}
+    .card{padding:16px 18px}
+    .core-card{flex-direction:column;justify-content:center;text-align:center;gap:14px}
+    .core{width:118px;height:118px}.core-core{inset:40px}
+    .core-info{text-align:center}
+    .core-info .st{font-size:16px}
+    .core-info .sub{font-size:15px;line-height:1.45;max-width:26ch;margin:9px auto 0}
+    .core-card .lat{font-size:11.5px;gap:14px}
+    .core-card .teleline{font-size:11px;gap:11px}
+    .core-card .wavebox{height:34px;margin-top:14px}
+    .metrics{grid-template-columns:1fr 1fr;gap:12px 16px}
+    .metric .mval{font-size:18px}
+    .svc-grid{grid-template-columns:1fr 1fr;gap:3px 14px;align-content:start}
+    .svc{font-size:11px;padding:2px 0;gap:7px}
+    .svc .sd{width:5px;height:5px}
+    .feed{gap:10px}.msg .bubble{font-size:14px}.msg .who{width:50px}
+  }
+
+  /* === MONITOR VERTICAL FÍSICO (480x1920) GIRADO A HORIZONTAL ===
+     El panel reporta vertical; giramos el lienzo 90° para verlo en horizontal
+     y mostramos el layout de 4 paneles en fila. Para invertir el sentido si
+     se ve boca abajo: cambia a  translateY(100vh) rotate(-90deg). */
+  @media (orientation:portrait){
+    #stage{
+      position:fixed; top:0; left:0;
+      width:100vh;            /* 1920 -> ancho del lienzo horizontal */
+      height:100vw;          /* 480  -> alto del lienzo horizontal */
+      transform-origin:top left;
+      transform:translateX(100vw) rotate(90deg);
+    }
+    body{background-size:auto,auto,44px 44px,44px 44px}
+    .wrap{padding:16px 26px 12px;gap:12px;grid-template-rows:1fr auto}
+    header .logo{font-size:24px;letter-spacing:.36em}
+    .status{gap:18px}
+    .clock{font-size:27px}
+    main{grid-template-columns:1fr .92fr .76fr 1.38fr;grid-template-rows:1fr;gap:14px}
+    .left{display:contents}
+    .col.right{display:grid;grid-template-rows:minmax(0,1.3fr) minmax(0,1fr);gap:12px;min-height:0}
+    .card{padding:16px 18px}
+    .core-card{flex-direction:column;justify-content:center;text-align:center;gap:14px}
+    .core{width:118px;height:118px}.core-core{inset:40px}
+    .core-info{text-align:center}
+    .core-info .st{font-size:16px}
+    .core-info .sub{font-size:15px;line-height:1.45;max-width:26ch;margin:9px auto 0}
+    .core-card .lat{font-size:11.5px;gap:14px}
+    .core-card .teleline{font-size:11px;gap:11px}
+    .core-card .wavebox{height:34px;margin-top:14px}
+    .metrics{grid-template-columns:1fr 1fr;gap:12px 16px}
+    .metric .mval{font-size:18px}
+    .svc-grid{grid-template-columns:1fr 1fr;gap:3px 14px;align-content:start}
+    .svc{font-size:11px;padding:2px 0;gap:7px}
+    .svc .sd{width:5px;height:5px}
+    .feed{gap:10px}.msg .bubble{font-size:14px}.msg .who{width:50px}
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+<div id="boot">
+  <div class="bl">J<b>A</b>RVIS</div>
+  <div class="bb"><i></i></div>
+  <div class="bt">Inicializando sistemas</div>
+</div>
+<div id="briefing">
+  <div class="bgreet">Buenos días, <b>señor</b></div>
+  <div class="bdate" id="bdate"></div>
+  <div class="bwx" id="bwx"></div>
+  <div class="bevs" id="bevs"></div>
+  <div class="bhint">Diga «Mycroft, buenos días»</div>
+</div>
+<div id="spotify">
+  <div class="sp-logo">♪</div>
+  <div class="sp-art" id="spArt"></div>
+  <div class="sp-info">
+    <div class="sp-title" id="spTitle"></div>
+    <div class="sp-artist" id="spArtist"></div>
+    <div class="sp-bar"><i id="spBar"></i></div>
+  </div>
+</div>
+<div class="wrap">
+  <main>
+    <div class="col left">
+      <div class="card core-card" data-stagger style="animation-delay:.05s">
+        <div class="core">
+          <div class="ring"></div><div class="ring r2"></div><div class="ring r3"></div>
+          <div class="core-core" id="core"></div>
+        </div>
+        <div class="core-info">
+          <div class="st" id="cstate">EN ESCUCHA</div>
+          <div class="sub" id="csub">A la espera de «hey Mycroft».</div>
+          <div class="wavebox"><canvas id="wave"></canvas></div>
+          <div class="lat" id="lat"></div>
+          <div class="teleline" id="tele"></div>
+          <div class="usage" id="usage"></div>
+        </div>
+      </div>
+
+      <div class="card agenda-card" data-stagger style="animation-delay:.12s">
+        <div class="label"><span>Próximos eventos</span><span id="agov"></span></div>
+        <div id="agHero"></div>
+        <div class="agenda" id="agenda"><div class="empty">—</div></div>
+      </div>
+
+      <div class="card svc-card" data-stagger style="animation-delay:.19s">
+        <div class="label"><span>Actividad</span><span id="actnow"></span></div>
+        <div class="steps" id="steps">
+          <div class="step"><span class="sdot"></span>Te escucho</div>
+          <div class="step"><span class="sdot"></span>Transcribo</div>
+          <div class="step"><span class="sdot"></span>Pienso</div>
+          <div class="step"><span class="sdot"></span><span id="stepTool">Herramientas</span></div>
+          <div class="step"><span class="sdot"></span>Respondo</div>
+        </div>
+        <div class="fc3">
+          <div class="nlabel">El tiempo · Reus</div>
+          <div class="fctoday">
+            <span class="ficxl" id="wIcon">—</span>
+            <div class="fttxt"><span class="ftbig" id="wTemp">—°</span><span class="ftdesc" id="wDesc"></span></div>
+            <span class="ftmm" id="wMaxMin"></span>
+          </div>
+          <div class="fcdays" id="fcDays"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col right">
+      <div class="card vitals-card" data-stagger style="animation-delay:.24s">
+        <div class="label"><span>Vitales del sistema</span><span id="cores">— núcleos</span></div>
+        <div class="gauges">
+          <div class="gauge">
+            <div class="gwrap">
+              <svg viewBox="0 0 100 100"><circle class="g-track" cx="50" cy="50" r="42"/><circle class="g-val" id="ramArc" cx="50" cy="50" r="42"/></svg>
+              <div class="g-center"><div class="g-num" id="ramPct">—</div></div>
+            </div>
+            <div class="g-label">RAM</div><div class="g-detail" id="ramDet">—</div>
+          </div>
+          <div class="gauge">
+            <div class="gwrap">
+              <svg viewBox="0 0 100 100"><circle class="g-track" cx="50" cy="50" r="42"/><circle class="g-val" id="nvmeArc" cx="50" cy="50" r="42"/></svg>
+              <div class="g-center"><div class="g-num" id="nvmePct">—</div></div>
+            </div>
+            <div class="g-label">NVMe</div><div class="g-detail" id="nvmeDet">—</div>
+          </div>
+        </div>
+        <div class="vitals-foot">
+          <div class="vmini"><span class="vk">Carga</span><canvas id="loadspark"></canvas><span class="vv" id="load">—</span></div>
+          <div class="vmini sata"><span class="vk">SATA</span><span class="vbar"><i id="d1bar" style="width:0"></i></span><span class="vv" id="d1">—</span></div>
+        </div>
+      </div>
+      <div class="card feed-card" data-stagger style="animation-delay:.3s">
+        <div class="label"><span>Últimas interacciones</span><span class="live" style="display:flex;align-items:center;gap:7px"><span id="cnt">0</span></span></div>
+        <div class="feed" id="feed"><div class="empty">Sin actividad todavía.</div></div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="fade">
+    <div class="fleft">
+      <div class="pill" id="hpill"><span class="dot" id="hdot"></span><span id="hsys">EN LÍNEA</span></div>
+      <div class="live"><span class="d"></span><span>EN VIVO</span></div>
+      <div class="fsvc"><span class="fsvclabel">Servicios</span><span id="fsvc"></span></div>
+      <span class="fbrand">self-hosted · español de España</span>
+    </div>
+    <div class="fclock"><span class="clock" id="clock">--:--:--</span><span class="date" id="date"></span></div>
+  </footer>
+</div>
+</div><!-- /#stage -->
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const stage=$('stage');
+const TZ='Europe/Madrid';                                    // el host va en UTC: fijamos hora española aquí
+const CAL_COLORS=['#3fe9ff','#7fd4a0','#e0b46b','#b79cff'];   // color por calendario (orden de HUD_CALENDAR_ICS)
+function barClass(p){return p>=90?'crit':p>=75?'hot':''}
+// intro de arranque: se desvanece y se retira a los ~2.6s
+setTimeout(()=>{const b=$('boot');if(b){b.classList.add('off');setTimeout(()=>b.remove(),900);}},2600);
+function clockTick(){const d=new Date();
+  $('clock').textContent=d.toLocaleTimeString('es-ES',{hour12:false,timeZone:TZ});
+  const ds=d.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long',timeZone:TZ});
+  $('date').textContent=ds.charAt(0).toUpperCase()+ds.slice(1);
+}
+setInterval(clockTick,1000);clockTick();
+
+let targetLvl=0, lvl=0, serverSkew=0, feedData=[], lastKey='', lastAgKey='', lastHeroKey='', hudVer=null;
+const loadHist=[];                              // histórico de carga (sparkline)
+const GC=2*Math.PI*42;                          // circunferencia del gauge (r=42)
+function setGauge(id,pct){const el=$(id);if(!el)return;pct=Math.max(0,Math.min(100,pct||0));
+  el.style.strokeDasharray=GC;el.style.strokeDashoffset=GC*(1-pct/100);
+  el.style.stroke=pct>=90?'var(--bad)':pct>=78?'var(--warn)':'var(--cyan)';}
+function drawSpark(id,arr,maxRef){
+  const c=$(id); if(!c)return;
+  const w=c.width=c.offsetWidth||120, h=c.height=c.offsetHeight||18, ctx=c.getContext('2d');
+  ctx.clearRect(0,0,w,h); if(arr.length<2)return;
+  const mx=Math.max(maxRef*0.55,...arr,0.1);
+  ctx.beginPath();
+  arr.forEach((v,i)=>{const x=i/(arr.length-1)*w,y=h-1.5-(Math.min(v,mx)/mx)*(h-3);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+  ctx.strokeStyle='rgba(63,233,255,.75)';ctx.lineWidth=1.5;ctx.shadowColor='rgba(63,233,255,.5)';ctx.shadowBlur=4;ctx.stroke();
+  ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.closePath();ctx.shadowBlur=0;ctx.fillStyle='rgba(63,233,255,.07)';ctx.fill();
+}
+
+function fmtUp(s){const h=Math.floor(s/3600);return h>=24?Math.floor(h/24)+'d':h+'h';}
+function fmtCountdown(s){s=Math.max(0,s);
+  if(s<3600)return'en '+Math.round(s/60)+' min';
+  if(s<86400){const h=Math.floor(s/3600),m=Math.round((s%3600)/60);return'en '+h+' h'+(m?' '+m+' min':'');}
+  const d=Math.floor(s/86400);return'en '+d+(d===1?' día':' días');}
+function relTime(ts){
+  const s=Math.max(0,(Date.now()/1000+serverSkew)-ts);
+  if(s<60)return'ahora mismo'; if(s<3600)return'hace '+(s/60|0)+' min';
+  if(s<86400)return'hace '+(s/3600|0)+' h'; return'hace '+(s/86400|0)+' d';
+}
+function dayLabel(ts){
+  const d=new Date(ts*1000);
+  const nowYmd=new Date(Date.now()+serverSkew*1000).toLocaleDateString('en-CA',{timeZone:TZ});
+  const evYmd=d.toLocaleDateString('en-CA',{timeZone:TZ});   // YYYY-MM-DD en Madrid
+  const diff=Math.round((Date.parse(evYmd)-Date.parse(nowYmd))/86400000);
+  if(diff<=0)return'HOY'; if(diff===1)return'MAÑ';
+  return d.toLocaleDateString('es-ES',{weekday:'short',timeZone:TZ}).replace('.','').toUpperCase()
+        +' '+d.toLocaleDateString('es-ES',{day:'numeric',timeZone:TZ});
+}
+function renderFeed(){
+  $('feed').innerHTML=feedData.length? feedData.slice(0,9).map((x,i)=>`
+    <div class="msg ${x.role}" style="animation-delay:${i*.04}s">
+      <div class="who">${x.role==='jarvis'?'JARVIS':x.role==='user'?'JOSÉ':'·'}</div>
+      <div><div class="bubble">${esc(x.text)}</div><div class="t">${esc(relTime(x.ts))}</div></div>
+    </div>`).join('') : '<div class="empty">Sin actividad todavía.</div>';
+}
+// refresca solo las marcas de tiempo relativas entre polls (sin reconstruir el feed)
+setInterval(()=>{const els=document.querySelectorAll('#feed .t');
+  if(els.length&&feedData.length)els.forEach((el,i)=>{if(feedData[i])el.textContent=relTime(feedData[i].ts);});},12000);
+
+// medidor de audio reactivo (canvas) — rAF, independiente del polling de datos
+const wave=$('wave'), wctx=wave.getContext('2d');
+function sizeWave(){wave.width=Math.max(2,wave.offsetWidth);wave.height=Math.max(2,wave.offsetHeight);} // offset* = px de layout (a prueba de la rotación 90°)
+addEventListener('resize',sizeWave); sizeWave();
+let raf;
+function drawWave(ts){
+  lvl+=(targetLvl-lvl)*.18;                       // suavizado hacia el nivel real
+  const w=wave.width,h=wave.height; wctx.clearRect(0,0,w,h);
+  const active=(stage.dataset.state||'idle')!=='idle';
+  const amp=active?(0.18+lvl*0.82):0.05;          // casi plano en reposo, vivo al hablar
+  wctx.beginPath();
+  const step=Math.max(1,w/72);
+  for(let x=0;x<=w;x+=step){
+    const env=Math.exp(-Math.pow((x/w-0.5)*2.1,2));   // campana: más alto en el centro
+    const y=h/2+Math.sin(x/w*Math.PI*6+ts/280)*(h/2-2)*amp*env;
+    x===0?wctx.moveTo(x,y):wctx.lineTo(x,y);
+  }
+  wctx.strokeStyle='rgba(63,233,255,'+(active?0.9:0.28)+')';
+  wctx.lineWidth=2; wctx.shadowColor='rgba(63,233,255,.65)'; wctx.shadowBlur=active?7:0;
+  wctx.stroke();
+  raf=requestAnimationFrame(drawWave);
+}
+raf=requestAnimationFrame(drawWave);
+document.addEventListener('visibilitychange',()=>{          // ahorra CPU si el kiosko se oculta
+  if(document.hidden){cancelAnimationFrame(raf);} else {sizeWave();raf=requestAnimationFrame(drawWave);}
+});
+
+async function tick(){
+  try{
+    const r=await fetch('/api/hud',{cache:'no-store'}); if(!r.ok)throw 0;
+    const d=await r.json();
+    // siempre actualizado: si cambia la versión del HUD (mtime de la plantilla), recarga
+    if(d.version){ if(hudVer===null)hudVer=d.version; else if(d.version!==hudVer){location.reload();return;} }
+    $('hdot').style.background=d.healthy?'var(--ok)':'var(--warn)';
+    $('hdot').style.boxShadow='0 0 10px '+(d.healthy?'var(--ok)':'var(--warn)');
+    $('hsys').textContent=d.healthy?'EN LÍNEA':'DEGRADADO';
+    stage.dataset.health=d.healthy?'ok':'bad';                 // alerta global si cae algo
+    $('hpill').classList.toggle('degr',!d.healthy);
+    // vitales: RAM/NVMe (gauges) protagonistas, carga (tendencia) y SATA (tenue)
+    const m=d.metrics||{};
+    $('cores').textContent=(m.cores||'—')+' núcleos';
+    {const l0=parseFloat((m.load||'').trim().split(/\s+/)[0]);
+     if(!isNaN(l0)){$('load').textContent=l0.toFixed(2);loadHist.push(l0);if(loadHist.length>60)loadHist.shift();drawSpark('loadspark',loadHist,m.cores||4);}}
+    if(m.mem){setGauge('ramArc',m.mem.pct);$('ramPct').innerHTML=m.mem.pct+'<small>%</small>';$('ramDet').textContent=m.mem.used+' / '+m.mem.total+' GB';}
+    const dsk=m.disks||[];
+    if(dsk[0]){setGauge('nvmeArc',dsk[0].pct);$('nvmePct').innerHTML=dsk[0].pct+'<small>%</small>';$('nvmeDet').textContent=dsk[0].used+' / '+dsk[0].total+' GB';}
+    if(dsk[1]){$('d1').textContent=dsk[1].pct+'%';$('d1bar').style.width=dsk[1].pct+'%';}
+    // servicios -> tira de puntos en la barra inferior
+    $('fsvc').innerHTML=(d.services||[]).map(s=>`<span class="fd ${s.running?'':(s.optional?'idle':'down')}"></span>`).join('');
+    // núcleo / estado de voz REAL del pipeline
+    const vs=d.voice||{};
+    $('cstate').textContent=vs.state_label||'EN ESCUCHA';
+    $('csub').textContent=vs.sub||'A la espera de «hey Mycroft».';
+    const st=vs.state||(vs.active?'speaking':'idle');
+    if(stage.dataset.state!=='wake' && st==='wake'){void stage.offsetWidth;}  // reinicia el pulso de wake
+    stage.dataset.state=st;
+    // ACTIVIDAD: stepper en vivo (qué hace Jarvis)
+    const STEP_OF={wake:0,listening:0,transcribing:1,thinking:2,tool:3,speaking:4};
+    const si=(st in STEP_OF)?STEP_OF[st]:-1;
+    document.querySelectorAll('#steps .step').forEach((el,i)=>{el.classList.toggle('active',i===si);el.classList.toggle('done',si>=0&&i<si);});
+    $('stepTool').textContent=(st==='tool'&&vs.tool)?vs.tool:'Herramientas';
+    $('actnow').textContent=(si<0)?'en reposo':(vs.state_label||'');
+    targetLvl=Math.max(0,Math.min(1,vs.level||0));
+    stage.style.setProperty('--lvl',targetLvl.toFixed(3));
+    // latencias reales por etapa (TTFB de Pipecat)
+    const tf=vs.ttfb||{};
+    $('lat').innerHTML=[['oído',tf.stt],['pensó',tf.llm],['habló',tf.tts]]
+      .map(([k,v])=>`<span class="${v!=null?'on':''}">${k} <b>${v!=null?v.toFixed(1)+'s':'—'}</b></span>`).join('');
+    // telemetría ambiental
+    const t=d.telemetry||{};
+    serverSkew=(d.server_epoch||(Date.now()/1000))-Date.now()/1000;
+    $('tele').innerHTML=[
+      t.model_stt&&`STT <b>${esc(t.model_stt)}</b>`,
+      t.model_llm&&`LLM <b>${esc(t.model_llm)}</b>`,
+      (t.convos_today!=null)&&`<b>${t.convos_today}</b> charlas hoy`,
+      t.last_heard&&`oído <b>${esc(t.last_heard)}</b>`,
+      (t.host_uptime!=null)&&`up <b>${fmtUp(t.host_uptime)}</b>`,
+    ].filter(Boolean).join('<span style="opacity:.4"> · </span>');
+    // uso de OpenCode Go (tokens/coste hoy) — bien visible a la izquierda
+    const u=d.usage||{};
+    const tk=u.tokens>=1000?(u.tokens/1000).toFixed(1)+'k':(u.tokens||0);
+    const cost=(u.cost||0), pct=Math.min(100,cost/12*100);
+    $('usage').innerHTML=
+      `<div class="ul">OpenCode Go · GLM-5</div>`+
+      `<div class="uv"><b>${tk}</b> tokens hoy</div>`+
+      `<div class="us">~$${cost.toFixed(3)} · ${u.requests||0} peticiones · de $12/5h</div>`+
+      `<div class="ubar"><i style="width:${pct.toFixed(1)}%"></i></div>`;
+    // OVERLAY DE BRIEFING MATUTINO (lo controla el panel: 7-9h o hasta «buenos días»)
+    const brief=$('briefing');
+    if(d.briefing_active){
+      if(!brief.classList.contains('on')){
+        const dd=new Date();
+        const ds=dd.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long',timeZone:TZ});
+        $('bdate').textContent=ds.charAt(0).toUpperCase()+ds.slice(1);
+        const w=d.weather; const d0=(w&&w.days&&w.days[0])||{};
+        $('bwx').innerHTML=w?`<span class="bi">${w.icon}</span>${w.temp}° · ${esc(w.desc)}${d0.max!=null?` · máx ${d0.max}° mín ${d0.min}°`:''}`:'';
+        const today=new Date().toLocaleDateString('en-CA',{timeZone:TZ}), nS=Date.now()/1000+serverSkew;
+        const hoy=(d.agenda||[]).filter(e=>!e.all_day && new Date(e.start*1000).toLocaleDateString('en-CA',{timeZone:TZ})===today && (e.end||e.start+3600)>nS);
+        $('bevs').innerHTML=hoy.length?hoy.slice(0,5).map(e=>`<div class="be"><span class="bt">${new Date(e.start*1000).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',timeZone:TZ})}</span><span>${esc(e.summary)}</span></div>`).join(''):'<div class="be" style="color:var(--dim)">Hoy no tiene citas, señor.</div>';
+      }
+      brief.classList.add('on'); stage.dataset.brief='1';
+    } else { brief.classList.remove('on'); stage.dataset.brief=''; }
+    // WIDGET SPOTIFY (flotante, solo mientras suena)
+    const sp=d.spotify, spw=$('spotify');
+    if(sp&&sp.playing&&sp.title){
+      if($('spTitle').textContent!==sp.title){
+        $('spTitle').textContent=sp.title; $('spArtist').textContent=sp.artist||'';
+        $('spArt').style.backgroundImage=sp.art?`url("${sp.art}")`:'';
+      }
+      if(sp.duration) $('spBar').style.width=Math.min(100,sp.progress/sp.duration*100).toFixed(1)+'%';
+      spw.classList.add('on');
+    } else { spw.classList.remove('on'); }
+    // feed (marcas de tiempo relativas, vivas)
+    feedData=d.interactions||[];$('cnt').textContent=feedData.length;
+    const key=feedData.length?(feedData[0].ts+feedData[0].text):'';
+    if(key!==lastKey){lastKey=key;renderFeed();}
+    // agenda: oculta lo ya pasado (filtro en cliente, segundo a segundo) y destaca el próximo/en-curso
+    const ag=d.agenda, nowS=Date.now()/1000+serverSkew;
+    const evEnd=e=>e.end||e.start+3600;
+    if(ag==null){
+      if(lastAgKey!=='null'){lastAgKey='null';lastHeroKey='';$('agHero').innerHTML='';$('agov').textContent='';
+        $('agenda').innerHTML='<div class="empty">Calendario no configurado.</div>';}
+    }else{
+      const live=ag.filter(e=>evEnd(e)>nowS);            // ya terminados -> desaparecen al instante
+      const hero=live.find(e=>!e.all_day)||live[0]||null;
+      const rest=live.filter(e=>e!==hero);
+      $('agov').textContent=live.length||'';
+      // --- HERO (estructura re-render solo al cambiar; cuenta atrás viva cada tick) ---
+      if(hero){
+        const ip=hero.start<=nowS&&nowS<evEnd(hero);
+        const hKey=hero.summary+'|'+hero.start+'|'+ip;
+        if(hKey!==lastHeroKey){
+          lastHeroKey=hKey;
+          const col=CAL_COLORS[(hero.cal||0)%CAL_COLORS.length];
+          const when=hero.all_day?'':`<span style="opacity:.55"> · </span>${dayLabel(hero.start)} ${new Date(hero.start*1000).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',timeZone:TZ})}`;
+          $('agHero').innerHTML=`<div class="agh ${ip?'live':''}" style="--cal:${col}">
+            <div class="aghbadge">${ip?'<span class="lp"></span>EN CURSO':'PRÓXIMO'}</div>
+            <div class="aghtitle">${esc(hero.summary)}</div>
+            <div class="aghwhen"><b id="aghCount"></b>${when}</div></div>`;
+        }
+        const c=$('aghCount');
+        if(c){const ipN=hero.start<=nowS&&nowS<evEnd(hero);
+          c.textContent=hero.all_day?(ipN?'Hoy · todo el día':'Todo el día')
+            :(ipN?'Termina '+fmtCountdown(evEnd(hero)-nowS):fmtCountdown(hero.start-nowS));}
+      }else if(lastHeroKey!=='none'){lastHeroKey='none';$('agHero').innerHTML='';}
+      // --- LISTA (resto de próximos) ---
+      const lKey=rest.map(e=>e.start+e.summary).join('|')||'_';
+      if(lKey!==lastAgKey){
+        lastAgKey=lKey;
+        $('agenda').innerHTML=rest.length? rest.map(e=>{
+          const col=CAL_COLORS[(e.cal||0)%CAL_COLORS.length];
+          const t=e.all_day?'todo':new Date(e.start*1000).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',timeZone:TZ});
+          return `<div class="ev" style="--cal:${col}"><span class="when"><span class="evd">${dayLabel(e.start)}</span><span class="evt">${t}</span></span><span class="evs">${esc(e.summary)}</span></div>`;
+        }).join('') : (hero?'':'<div class="empty">Sin eventos próximos.</div>'); }
+    }
+    // tiempo: HOY protagonista (temp actual + máx/mín) + 2 días siguientes
+    const w=d.weather;
+    if(w){
+      $('wIcon').textContent=w.icon; $('wTemp').textContent=w.temp+'°'; $('wDesc').textContent=w.desc;
+      const d0=(w.days&&w.days[0])||{};
+      $('wMaxMin').innerHTML=(d0.max!=null)?`máx ${d0.max}°<br>mín ${d0.min}°`:'';
+      $('fcDays').innerHTML=(w.days||[]).slice(1,3).map(x=>
+        `<div class="fcrow"><span class="fday">${esc(x.label)}</span><span class="fic">${x.icon}</span><span class="ftemp">${x.max}°<span class="lo"> / ${x.min}°</span></span></div>`).join('');
+    }
+  }catch(e){ $('hsys').textContent='SIN CONEXIÓN'; $('hdot').style.background='var(--bad)'; }
+}
+tick(); setInterval(tick,700);   // 700ms: estado y nivel llegan a tiempo; el rAF interpola entre polls
+</script>
+</body>
+</html>

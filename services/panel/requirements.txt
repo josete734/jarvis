@@ -4,3 +4,5 @@ jinja2
 aiohttp
 pyyaml
 python-multipart
+icalendar
+recurring-ical-events

@@ -41,6 +41,9 @@ from pipecat.processors.aggregators.llm_response_universal import (
 )
 from pipecat.turns.user_mute.always_user_mute_strategy import AlwaysUserMuteStrategy
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
+from pipecat.frames.frames import Frame, TranscriptionFrame
+from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
+from datetime import datetime
 
 import events
 from conversation_log import ConversationLog
@@ -49,11 +52,55 @@ from security import SecurityState, TranscriptWatcher
 from stt_factory import build_stt
 from tools import register_tools
 from wakeword_gate import WakeWordGate
+from voice_state import VoiceStateObserver
 from echo_cancel import EchoCanceller, EchoCancelFilter, ReferenceTap
 from tts_factory import build_tts
 
 PROMPTS = Path("/prompts")
 PERSONA = Path("/persona")
+
+_DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+_MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
+          "septiembre", "octubre", "noviembre", "diciembre"]
+
+
+def _momento_actual() -> str:
+    """Bloque de fecha/hora real (del sistema) para inyectar en el system prompt."""
+    n = datetime.now()
+    return (
+        "\n\n## Momento actual (dato del sistema, para tu referencia; NO lo inventes ni lo busques)\n"
+        f"Ahora mismo es {_DIAS[n.weekday()]} {n.day} de {_MESES[n.month - 1]} de {n.year}, "
+        f"las {n.hour:02d}:{n.minute:02d} (hora local de España). "
+        "Úsalo solo si te preguntan EXPRESAMENTE la hora o la fecha. "
+        "Si la pregunta es elíptica o un seguimiento (p.ej. «¿y mañana?», «¿y el viernes?»), "
+        "NO contestes la fecha: continúa el tema anterior (si hablabais de la agenda, mira la agenda)."
+    )
+
+
+class TimeInjector(FrameProcessor):
+    """Refresca la fecha/hora REAL en el system prompt en cada turno del usuario.
+
+    Bug previo: el LLM se inventaba la hora porque nunca la recibía. Se dispara al
+    transcribir (TranscriptionFrame), justo antes de que el agregador llame al LLM.
+    """
+
+    def __init__(self, context, base_system: str):
+        super().__init__()
+        self._ctx = context
+        self._base = base_system
+        self._turns = 0
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, TranscriptionFrame):
+            self._turns += 1
+            if self._turns % 8 == 0:               # recarga aprendido.md/perfil en vivo (aprende sin reiniciar)
+                try:
+                    self._base = load_system_prompt()
+                except Exception:
+                    pass
+            self._ctx.messages[0]["content"] = self._base + _momento_actual()
+        await self.push_frame(frame, direction)
 
 
 def _env_int(name: str):
@@ -88,12 +135,10 @@ def _audio_index(env_name: str, fallback_name: str = "default"):
 
 
 def load_system_prompt() -> str:
-    """Compose system prompt: core rules + personality sheet + relationship state."""
-    parts = []
-    for path in (PROMPTS / "system_jarvis.md", PERSONA / "jarvis.md", PERSONA / "relacion.md"):
-        if path.exists():
-            parts.append(path.read_text(encoding="utf-8").strip())
-    return "\n\n---\n\n".join(parts)
+    """System prompt de VOZ. La composición real (compartida con el canal de texto
+    de Telegram) vive en sysprompt.compose() — una sola fuente de verdad."""
+    import sysprompt
+    return sysprompt.compose("voz")
 
 
 def list_audio_devices() -> None:
@@ -133,10 +178,15 @@ async def main() -> None:
         )
     )
 
+    # Observer pasivo: refleja el estado real del pipeline en /logs/voice_state.json
+    # para el HUD (lo lee el panel). No altera el audio ni el pipeline.
+    voice_probe = VoiceStateObserver(model=os.getenv("WHISPER_MODEL", "small"))
+
     gate = WakeWordGate(
         model_path=os.getenv("WAKE_MODEL_PATH", "/models/openwakeword/hey_jarvis_v0.1.onnx"),
         threshold=float(os.getenv("WAKE_THRESHOLD", "0.5")),
         wake_timeout_secs=float(os.getenv("WAKE_TIMEOUT_SECS", "45")),
+        probe=voice_probe,
     )
 
     stt = build_stt()
@@ -161,14 +211,15 @@ async def main() -> None:
 
     schemas = register_tools(llm, security)
 
+    base_system = load_system_prompt()
     context = LLMContext(
-        messages=[{"role": "system", "content": load_system_prompt()}],
+        messages=[{"role": "system", "content": base_system + _momento_actual()}],
         tools=ToolsSchema(standard_tools=schemas) if schemas else None,
     )
     aggregators = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
-            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
+            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=float(os.getenv("VAD_STOP_SECS", "0.7")))),  # 0.2 cortaba tarde -> segmentos ~20s; 0.7 cierra el turno antes (raíz de "me escucha mal")
             # smart-turn v3.2 is the default stop strategy in 1.3.0 — do not disable.
             # DISABLE_BARGE_IN=true silencia al usuario mientras el bot habla (evita la
             # autointerrupción por eco cuando NO hay AEC hardware). Con el Anker (AEC
@@ -182,7 +233,7 @@ async def main() -> None:
         ),
     )
 
-    processors = [transport.input(), gate, stt, watcher]
+    processors = [transport.input(), gate, stt, watcher, TimeInjector(context, base_system)]
 
     memory = build_memory_service(security)        # None until MEM0_ENABLED=true (Fase 3)
     if memory:
@@ -214,8 +265,28 @@ async def main() -> None:
         idle_timeout_secs=None,
     )
 
+    task.add_observer(voice_probe)   # estado de voz en vivo -> /logs/voice_state.json (HUD)
+
     # Internal HTTP server: presence events (Fase 5), DND toggle, event log.
     await events.start(task, security, port=int(os.getenv("EVENTS_PORT", "8070")))
+
+    # Proactividad: heartbeat (recordatorios + agenda inminente) por el gate único.
+    from proactive import ProactiveGate, Heartbeat
+    proactive_gate = ProactiveGate(task, security)
+    events.set_gate(proactive_gate)                 # Fase B: /event/* enruta por presencia
+    asyncio.create_task(Heartbeat(proactive_gate).run())
+
+    # Cron en lenguaje natural (Bloque 3): tareas recurrentes -> aviso por el gate.
+    from cron import Cron
+    asyncio.create_task(Cron(proactive_gate).run())
+
+    # Curator: Jarvis aprende solo de las conversaciones -> /logs/aprendido.md
+    from curator import Curator
+    asyncio.create_task(Curator().run())
+
+    # Agente de texto bidireccional por Telegram (Fase A): mismo cerebro+tools+memoria.
+    from telegram_agent import TelegramAgent
+    asyncio.create_task(TelegramAgent().run())
 
     logger.info("Jarvis pipeline starting (say 'hey Jarvis')")
     await PipelineRunner().run(task)

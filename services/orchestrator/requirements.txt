@@ -9,3 +9,5 @@ aiohttp>=3.9,<4
 pyyaml>=6
 loguru
 livekit            # AEC plan C (PLAN_FINAL §5.2) - activado sesión 4
+pytest>=8          # solo tests: `docker compose exec orchestrator python3 -m pytest tests/`
+# sentence-transformers>=3,<4  # (mem0/e5, Fase 3 aparcada — re-añadir al activar MEM0; arrastra torch ~2GB)

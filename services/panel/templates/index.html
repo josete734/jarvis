@@ -5,6 +5,24 @@
   {% include "_live.html" %}
 </div>
 
+{% if propuestas %}
+<section>
+  <h2>🌱 Propuestas de Jarvis ({{ propuestas|length }})</h2>
+  <p style="color:#888;font-size:.9em">Lo que Jarvis ha aprendido de ti y sugiere recordar. Si apruebas, se añade a tu perfil.</p>
+  {% for p in propuestas %}
+  <div style="border:1px solid #2a3140;border-radius:10px;padding:12px 14px;margin:10px 0;background:rgba(255,255,255,.02)">
+    {% if p.obs %}<div style="color:#aab4c0;font-size:.9em;margin-bottom:6px">{{ p.obs }}</div>{% endif %}
+    <div style="font-size:1.05em;margin-bottom:10px">➕ <b>{{ p.aplicar }}</b></div>
+    <form method="post" action="/propuesta/{{ p.id }}" class="inline" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input type="password" name="password" placeholder="contraseña" required>
+      <button name="accion" value="aprobar">Aprobar</button>
+      <button name="accion" value="rechazar" style="opacity:.7">Rechazar</button>
+    </form>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
 <section>
   <h2>Herramientas</h2>
   <table>

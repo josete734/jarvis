@@ -26,8 +26,10 @@ MOTION_MIN_AREA = 4000                      # px² of changed area to count as m
 PERSON_CONF = float(os.getenv("PERSON_CONF", "0.35"))  # YOLO person score (INT8 baja un poco)
 MATCH_THRESHOLD = 0.45                      # cosine similarity vs known embeddings
 CONSECUTIVE_MATCHES = 3                     # frames of same identity before event
-ABSENCE_MINUTES = 30                        # only greet if away longer than this
+ABSENCE_MINUTES = 30                        # (legacy, el saludo lo decide el orquestador)
 GREET_COOLDOWN_MINUTES = 60
+PRESENCE_POST_SECS = float(os.getenv("PRESENCE_POST_SECS", "8"))   # throttle de "veo a X"
+BEAT_SECS = float(os.getenv("VISION_BEAT_SECS", "30"))            # latido 'vision viva' (Fase B)
 ORCHESTRATOR = os.getenv("ORCHESTRATOR_EVENTS", "http://orchestrator:8070")
 FACES_DIR = Path("/faces")
 
@@ -116,24 +118,26 @@ class PresenceService:
                 return best
         return None
 
-    def _maybe_greet(self, person: str) -> None:
-        now = time.time()
-        away = now - self._last_seen.get(person, 0) > ABSENCE_MINUTES * 60
-        cooled = now - self._last_greeted.get(person, 0) > GREET_COOLDOWN_MINUTES * 60
-        self._last_seen[person] = now
-        if not (away and cooled):
-            return
-        self._last_greeted[person] = now
+    def _post(self, payload: dict) -> None:
         try:
             requests.post(
-                f"{ORCHESTRATOR}/event/presence",
-                json={"person": person},
-                headers={"X-Jarvis-Events-Secret": os.getenv("EVENTS_SECRET", "")},
-                timeout=5,
-            )
-            logger.info(f"presence event sent: {person}")
+                f"{ORCHESTRATOR}/event/presence", json=payload,
+                headers={"X-Jarvis-Events-Secret": os.getenv("EVENTS_SECRET", "")}, timeout=5)
         except requests.RequestException as e:
-            logger.warning(f"presence event failed: {e}")
+            logger.warning(f"presence post failed: {e}")
+
+    def _report_present(self, person: str) -> None:
+        """Presencia CONTINUA (throttled): informa 'veo a X ahora'. El orquestador
+        mantiene el estado presente/ausente y decide el saludo (cooldown allí, Fase B).
+        Aquí no se decide el saludo, solo se reporta sin spamear el endpoint."""
+        if not hasattr(self, "_last_post"):
+            self._last_post = {}
+        now = time.time()
+        self._last_seen[person] = now
+        if now - self._last_post.get(person, 0) < PRESENCE_POST_SECS:
+            return
+        self._last_post[person] = now
+        self._post({"person": person})
 
     # -- main loop ----------------------------------------------------------------
 
@@ -145,8 +149,13 @@ class PresenceService:
             return
         prev_gray = None
         interval = 1.0 / DETECT_FPS
+        last_beat = 0.0
 
         while True:
+            now = time.time()
+            if now - last_beat > BEAT_SECS:          # latido: 'vision viva' aunque no vea a nadie
+                self._post({"beat": True})            # -> el orquestador distingue ausente de visión caída
+                last_beat = now
             ok, frame = cap.read()
             if not ok:
                 time.sleep(1)
@@ -170,7 +179,7 @@ class PresenceService:
                     name, count = (person, self._streak[1] + 1) if self._streak and self._streak[0] == person else (person, 1)
                     self._streak = (name, count)
                     if count >= CONSECUTIVE_MATCHES:
-                        self._maybe_greet(person)
+                        self._report_present(person)
                         self._streak = None
                 else:
                     self._streak = None
