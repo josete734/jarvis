@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-# Daily restic backup to local USB disk (PLAN_FINAL §9.3). Timer: 05:00.
+# Daily restic backup to the 1TB data disk /mnt/storage (disco físico distinto del
+# NVMe donde vive el sistema y /srv/jarvis). Timer: 05:00.
 # One-time setup:
-#   sudo mkdir -p /mnt/backup/restic
+#   sudo mkdir -p /mnt/storage/jarvis-backup/restic
 #   sudo sh -c 'openssl rand -hex 32 > /root/.restic-pass && chmod 600 /root/.restic-pass'
-#   restic -r /mnt/backup/restic init --password-file /root/.restic-pass
+#   sudo restic -r /mnt/storage/jarvis-backup/restic init --password-file /root/.restic-pass
 set -euo pipefail
 
-export RESTIC_REPOSITORY=${RESTIC_REPOSITORY:-/mnt/backup/restic}
+export RESTIC_REPOSITORY=${RESTIC_REPOSITORY:-/mnt/storage/jarvis-backup/restic}
 export RESTIC_PASSWORD_FILE=${RESTIC_PASSWORD_FILE:-/root/.restic-pass}
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 command -v restic >/dev/null || { echo "restic not installed (apt install restic)"; exit 1; }
-mountpoint -q /mnt/backup || { echo "/mnt/backup not mounted — skipping"; exit 1; }
+mountpoint -q /mnt/storage || { echo "/mnt/storage not mounted — skipping"; exit 1; }
 
 echo "==> postgres dump"
 docker compose -f "$REPO_DIR/docker-compose.yml" exec -T postgres \

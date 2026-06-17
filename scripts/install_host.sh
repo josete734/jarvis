@@ -80,6 +80,6 @@ done
 systemctl daemon-reload
 systemctl enable --now jarvis-research.service jarvis-kiosk.service \
     jarvis-kiosk-restart.timer jarvis-backup.timer
-echo "NOTE: el backup necesita el disco USB montado en /mnt/backup y 'restic init' (ver scripts/backup.sh)."
+echo "NOTE: el backup escribe en /mnt/storage (disco de datos de 1TB) — repo restic + .restic-pass, ver scripts/backup.sh."
 
 echo "Done. Re-login (or 'newgrp docker') for group changes to apply."
