@@ -13,7 +13,7 @@ from typing import Any, Awaitable, Callable
 
 from loguru import logger
 
-CONFIRM_TTL_SECS = 60
+CONFIRM_TTL_SECS = 300   # 5 min: por Telegram el "sí" tarda; con 60s caducaba antes de confirmar
 # Solo "sí" acentuado (no "si" condicional, que aparece en frases dubitativas).
 AFFIRMATIVE_RE = re.compile(
     r"\b(sí|confirmo|confirmado|adelante|hazlo|dale|procede|vale|ok|de acuerdo|claro que sí)\b",

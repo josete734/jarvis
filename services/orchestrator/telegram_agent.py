@@ -89,6 +89,34 @@ def _write_offset(off: int) -> None:
         pass
 
 
+async def _download_voice(file_id: str) -> str | None:
+    """Descarga un fichero (nota de voz/audio) de Telegram a /tmp; devuelve la ruta o None."""
+    if not file_id:
+        return None
+    try:
+        async with aiohttp.ClientSession() as s:
+            async with s.get(_API(TOKEN) + "/getFile", params={"file_id": file_id},
+                             timeout=aiohttp.ClientTimeout(total=10)) as r:
+                fp = (((await r.json()) or {}).get("result") or {}).get("file_path") or ""
+            if not fp:
+                return None
+            url = f"https://api.telegram.org/file/bot{TOKEN}/{fp}"
+            async with s.get(url, timeout=aiohttp.ClientTimeout(total=30)) as r:
+                if r.status != 200:
+                    return None
+                data = await r.read()
+    except Exception as e:
+        logger.warning(f"[tg-agent] descarga de voz: {e}")
+        return None
+    path = f"/tmp/tg_voice_{file_id[:24]}{os.path.splitext(fp)[1] or '.oga'}"
+    try:
+        with open(path, "wb") as f:
+            f.write(data)
+    except Exception:
+        return None
+    return path
+
+
 async def _chat(messages: list, tools: list) -> dict:
     body = {"model": "jarvis-main", "messages": messages, "tools": tools,
             "max_tokens": MAX_TOKENS, "extra_body": {"reasoning_effort": "none"}}
@@ -240,6 +268,43 @@ class TelegramAgent:
         events.log_event("assistant_said", {"text": reply, "channel": "telegram"})
         logger.info(f"[tg-agent] respondido ({len(reply)} car)")
 
+    # -- notas de voz / audio ----------------------------------------------
+    async def _on_voice(self, chat_id, media: dict) -> None:
+        """Descarga el audio, lo transcribe con Whisper y lo procesa como texto."""
+        try:
+            from proactive import PRESENCE
+            PRESENCE.mark_remote()
+        except Exception:
+            pass
+        try:                                        # feedback inmediato
+            async with aiohttp.ClientSession() as s:
+                await s.post(_API(TOKEN) + "/sendChatAction",
+                             json={"chat_id": chat_id, "action": "typing"},
+                             timeout=aiohttp.ClientTimeout(total=5))
+        except Exception:
+            pass
+        path = await _download_voice(media.get("file_id"))
+        if not path:
+            await tg.send("No he podido descargar el audio, señor.")
+            return
+        import voice_notes
+        text = ""
+        try:
+            text = await voice_notes.transcribe(path)
+        except Exception as e:
+            logger.exception(f"[tg-agent] transcripción de voz: {e}")
+        finally:
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+        if not text:
+            await tg.send("He recibido su audio, señor, pero no he logrado entenderlo. ¿Lo repite?")
+            return
+        logger.info(f"[tg-agent] audio transcrito ({len(text)} car)")
+        await tg.send(f"🎙️ Le he escuchado: «{text}»")
+        await self._on_message(chat_id, text)       # se procesa como un mensaje normal
+
     # -- callbacks de botones (propuestas) ----------------------------------
     async def _on_callback(self, cq: dict) -> None:
         """Botón inline pulsado: verifica dueño, aplica la decisión vía el panel
@@ -319,6 +384,13 @@ class TelegramAgent:
                     logger.info("[tg-agent] mensaje de un desconocido ignorado")
                     continue
                 text = (msg.get("text") or "").strip()
+                media = msg.get("voice") or msg.get("audio") or msg.get("video_note")
+                if not text and media and media.get("file_id"):
+                    try:                              # nota de voz / audio -> transcribir
+                        await self._on_voice((msg.get("chat") or {}).get("id"), media)
+                    except Exception as e:
+                        logger.exception(f"[tg-agent] on_voice: {e}")
+                    continue
                 if not text:
                     continue
                 try:
