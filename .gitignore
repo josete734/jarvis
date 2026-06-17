@@ -24,3 +24,6 @@ data/
 docs/tesis/build/
 docs/tesis/_check.txt
 docs/tesis/*.pdf
+
+# build de la tesis2 (artefactos pandoc)
+docs/tesis2/build/

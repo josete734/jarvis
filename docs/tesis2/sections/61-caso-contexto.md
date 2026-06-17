@@ -1,0 +1,31 @@
+## Contexto, objetivos y restricciones
+
+El caso que se desarrolla en este capítulo no constituye el núcleo de la tesis, sino la *ilustración* de un marco conceptual ya expuesto: el del *self-hosting* (autoalojamiento) entendido como ejercicio de soberanía digital, y el de la agencia agéntica local como una de sus expresiones más exigentes. Conviene leerlo, por tanto, como banco de pruebas: un escenario acotado donde las tensiones generales del autoalojamiento —entre control y comodidad, entre privacidad y capacidad, entre coste y autonomía— dejan de ser abstractas y adquieren forma concreta, con cifras, latencias y fallos reproducibles. El objeto es un asistente de voz agéntico desplegado íntegramente sobre *hardware* de consumo en un *homelab* doméstico, sin dependencia funcional de servicios remotos para sus operaciones esenciales.
+
+### El asistente de voz como caso límite
+
+La elección de un asistente de voz no es casual. Frente a servicios autoalojados más habituales —sincronización de archivos, gestión documental, copias de seguridad—, un asistente de voz concentra en un único sistema casi todas las dificultades que el resto de capítulos trata por separado. Exige procesamiento de lenguaje natural y, por tanto, pone a prueba la viabilidad de modelos de lenguaje en *hardware* limitado, una familia de arquitecturas cuyo mecanismo de atención se formaliza en (Vaswani et al., 2017). Requiere capacidad de actuación sobre el entorno —encender luces, consultar agendas, responder con datos—, lo que lo sitúa de lleno en el dominio de los agentes que razonan y actúan de forma intercalada (Yao et al., 2023) y cuyo diseño efectivo aconseja favorecer la composición simple sobre la complejidad innecesaria (Anthropic, 2024). Y, por su naturaleza de captura permanente de audio en el espacio íntimo del hogar, eleva las exigencias de privacidad por encima de las de cualquier otro servicio doméstico.
+
+Esta concentración de requisitos convierte al asistente en un caso límite útil. Si el autoalojamiento resulta sostenible aquí —en la frontera de lo que el *hardware* de consumo puede soportar—, su viabilidad en escenarios menos exigentes queda razonablemente respaldada.
+
+### Objetivos
+
+Tres objetivos ordenan el diseño y permiten evaluarlo después.
+
+El primero es la *privacidad*. El audio captado en una vivienda no debe abandonar la red local salvo decisión explícita y acotada. Los asistentes comerciales operan según una lógica de extracción de datos como materia prima económica, dinámica que se analiza en (Zuboff, 2019); el caso busca invertir esa lógica situando el procesamiento del lado del usuario, en coherencia con el principio *local-first* según el cual los datos permanecen bajo control de quien los genera pese a la existencia de la nube (Kleppmann et al., 2019). La privacidad no se plantea aquí como cláusula contractual, sino como propiedad estructural derivada de dónde residen el cómputo y los datos.
+
+El segundo es la *agencia*: que el sistema actúe, no solo conteste. Un asistente que se limita a responder preguntas tiene un valor marginal frente a un buscador; el interés reside en su capacidad de orquestar servicios del propio *homelab* —domótica, calendario, notas— como un agente que decide y ejecuta acciones. Esto traslada al plano práctico la diferencia entre un modelo de lenguaje y un agente, y obliga a tratar cuestiones de seguridad que el resto de la tesis aborda, como la inyección indirecta de instrucciones a través de contenidos que el sistema procesa (Greshake et al., 2023).
+
+El tercero es el *español*. Buena parte de las soluciones de voz abiertas presupone el inglés y degrada su rendimiento en otras lenguas. El caso exige funcionamiento nativo en español de España, tanto en reconocimiento como en síntesis, lo que restringe de partida el repertorio de modelos y motores admisibles y condiciona varias decisiones de despliegue.
+
+### Restricciones
+
+Los objetivos anteriores se persiguen bajo restricciones reales, no de laboratorio, y son precisamente esas restricciones las que dan valor probatorio al caso.
+
+- *Hardware* de consumo. No se dispone de aceleradores de centro de datos ni de presupuesto para ellos. El cómputo se ejecuta sobre componentes asequibles, con memoria y capacidad de cálculo acotadas, lo que limita el tamaño de los modelos y obliga a compromisos entre calidad y latencia.
+- Latencia conversacional. Un asistente de voz solo resulta usable si responde en tiempos próximos al diálogo humano. Esta exigencia tensiona directamente la restricción anterior: los modelos más capaces son también los más lentos sobre *hardware* modesto.
+- Captura de audio fiable. El reconocimiento depende de una cadena de captura estable; los problemas en la adquisición de la señal degradan todo lo que viene después, con independencia de la calidad de los modelos.
+- Operación local y resiliencia. El sistema debe seguir prestando sus funciones esenciales sin conectividad externa, lo que excluye delegar el núcleo del procesamiento en interfaces remotas y aproxima el diseño a los argumentos extremo a extremo que ubican la función en los puntos finales del sistema (Saltzer et al., 1984).
+- Mantenibilidad por un solo operador. A diferencia de una infraestructura corporativa, el *homelab* lo administra una sola persona; la complejidad operativa es, por tanto, un coste de primer orden, y la contenedorización (Merkel, 2014) se vuelve un recurso de gestión más que una mera conveniencia.
+
+Cabe una salvedad metodológica. La restricción de privacidad admite una excepción deliberada y delimitada: cuando la calidad del razonamiento sobre *hardware* local resulta insuficiente, puede recurrirse a un modelo remoto para esa función concreta, manteniendo en local la captura, la síntesis y la orquestación. Esta concesión no contradice el marco, sino que lo somete a prueba: muestra dónde se sitúa hoy la frontera práctica de la soberanía digital y obliga a explicitar qué se cede, por qué y con qué salvaguardas, en lugar de presentar el autoalojamiento como un absoluto inalcanzable. El resto del capítulo describe cómo se materializan estos objetivos y restricciones en una arquitectura concreta y qué enseñanzas se extraen de su funcionamiento.
