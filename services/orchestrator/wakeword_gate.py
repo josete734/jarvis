@@ -23,6 +23,8 @@ from openwakeword.model import Model
 from pipecat.frames.frames import Frame, InputAudioRawFrame
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
 
+from rest import REST
+
 CHUNK_SAMPLES = 1280                  # 80 ms @ 16 kHz (openwakeword recommendation)
 CHUNK_BYTES = CHUNK_SAMPLES * 2       # int16
 REARM_COOLDOWN_SECS = 1.0             # avoid instant re-trigger after waking
@@ -90,6 +92,16 @@ class WakeWordGate(FrameProcessor):
         # Every non-audio frame (Start/End/Interruption/system) must always pass.
         if not isinstance(frame, InputAudioRawFrame):
             await self.push_frame(frame, direction)
+            return
+
+        # Reposo ("Descansa" por Telegram): se descarta el audio sin correr el modelo
+        # -> wake-word a 0 CPU e imposible despertar por voz (se revive por Telegram).
+        if REST.resting:
+            if self._awake:                  # si estaba despierto al entrar en reposo, duérmelo
+                self._awake = False
+                self._model.reset()
+                if self._probe is not None:
+                    self._probe.go_idle()
             return
 
         if self._awake:

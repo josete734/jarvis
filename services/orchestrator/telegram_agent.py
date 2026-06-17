@@ -20,6 +20,7 @@ import asyncio
 import json
 import os
 import time
+import unicodedata
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -29,10 +30,23 @@ from loguru import logger
 
 import events
 import llm_errors
+import power
 import sysprompt
 import telegram as tg
+from rest import REST
 from security_core import SecurityState
 from tools.registry import dispatch, tool_specs
+
+# Comandos deterministas de reposo (Descansa/Revive). Sin acentos y en minúsculas.
+_SLEEP_WORDS = {"descansa", "descansar", "duerme", "duermete", "reposa", "a dormir"}
+_WAKE_WORDS = {"revive", "revivir", "despierta", "despiertate", "despierta jarvis"}
+
+
+def _norm(text: str) -> str:
+    """minúsculas, sin acentos, sin signos de puntuación al borde — para casar comandos."""
+    t = unicodedata.normalize("NFKD", (text or "").strip().lower())
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return t.strip(" .!¡¿?,;:")
 
 TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
 OWNER = os.getenv("TELEGRAM_OWNER_ID", "").strip()
@@ -182,6 +196,26 @@ class TelegramAgent:
             PRESENCE.mark_remote()
         except Exception:
             pass
+        # Comandos deterministas de reposo (NO pasan por el LLM): Descansa / Revive.
+        cmd = _norm(text)
+        if cmd in _SLEEP_WORDS or cmd in _WAKE_WORDS:
+            sleep = cmd in _SLEEP_WORDS
+            (REST.enter if sleep else REST.exit)()
+            ok = await power.screen("sleep" if sleep else "wake")
+            if sleep:
+                reply = ("😴 A descansar, señor. Apago la pantalla y dejo de escuchar. "
+                         "Escríbame «Revive» cuando me necesite.")
+                if not ok:
+                    reply += " (No he podido apagar la pantalla, pero ya no escucho.)"
+            else:
+                reply = "☀️ De vuelta, señor. Pantalla y oídos otra vez activos."
+                if not ok:
+                    reply += " (La pantalla no respondió, conviene revisarlo.)"
+            events.log_event("user_said", {"text": text, "channel": "telegram"})
+            await tg.send(reply)
+            events.log_event("assistant_said", {"text": reply, "channel": "telegram"})
+            logger.info(f"[tg-agent] reposo: {'sleep' if sleep else 'wake'} (pantalla={'ok' if ok else 'fallo'})")
+            return
         now = time.time()
         while self._rl and now - self._rl[0] > 60:
             self._rl.popleft()
