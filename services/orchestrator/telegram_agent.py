@@ -38,6 +38,8 @@ TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
 OWNER = os.getenv("TELEGRAM_OWNER_ID", "").strip()
 LLM = os.getenv("LLM_BASE", "http://litellm:4000/v1")
 LLM_KEY = os.getenv("LITELLM_API_KEY", "sk-litellm")
+PANEL = os.getenv("PANEL_INTERNAL", "http://panel:8080")     # aplicar decisiones de propuestas
+EVENTS_SECRET = os.getenv("EVENTS_SECRET", "")
 _API = "https://api.telegram.org/bot{}".format
 _OFFSET = Path("/logs/telegram_offset.txt")
 _CHAT = Path("/logs/telegram_chat.txt")
@@ -204,9 +206,46 @@ class TelegramAgent:
         events.log_event("assistant_said", {"text": reply, "channel": "telegram"})
         logger.info(f"[tg-agent] respondido ({len(reply)} car)")
 
+    # -- callbacks de botones (propuestas) ----------------------------------
+    async def _on_callback(self, cq: dict) -> None:
+        """Botón inline pulsado: verifica dueño, aplica la decisión vía el panel
+        (que es quien puede escribir el perfil) y refleja el resultado en el mensaje."""
+        if str((cq.get("from") or {}).get("id")) != OWNER:
+            return
+        try:
+            from proactive import PRESENCE
+            PRESENCE.mark_remote()                       # toca el móvil -> está fuera
+        except Exception:
+            pass
+        data = cq.get("data") or ""
+        cmsg = cq.get("message") or {}
+        chat_id = (cmsg.get("chat") or {}).get("id")
+        message_id = cmsg.get("message_id")
+        parts = data.split(":")
+        if len(parts) != 3 or parts[0] != "prop":
+            await tg.answer_callback(cq.get("id"), "?")
+            return
+        _, pid, accion = parts
+        ok = False
+        try:
+            async with aiohttp.ClientSession() as s:
+                async with s.post(f"{PANEL}/api/propuesta/decision",
+                                  json={"pid": pid, "accion": accion},
+                                  headers={"X-Jarvis-Events-Secret": EVENTS_SECRET},
+                                  timeout=aiohttp.ClientTimeout(total=8)) as r:
+                    ok = r.status == 200
+        except Exception as e:
+            logger.warning(f"[tg-agent] decisión propuesta: {e}")
+        label = {"aprobar": "✅ Aprobada", "rechazar": "❌ Rechazada",
+                 "reformular": "✏️ Pedido reformular"}.get(accion, accion)
+        await tg.answer_callback(cq.get("id"), label if ok else "No se pudo aplicar")
+        base = (cmsg.get("text") or "Propuesta")
+        await tg.edit_message(chat_id, message_id, base + f"\n\n— {label}" + ("" if ok else " (error)"))
+
     # -- poll loop ----------------------------------------------------------
     async def _poll(self, offset: int) -> list:
-        params = {"offset": offset, "timeout": 25, "allowed_updates": json.dumps(["message"])}
+        params = {"offset": offset, "timeout": 25,
+                  "allowed_updates": json.dumps(["message", "callback_query"])}
         async with aiohttp.ClientSession() as s:
             async with s.get(_API(TOKEN) + "/getUpdates", params=params,
                              timeout=aiohttp.ClientTimeout(total=35)) as r:
@@ -232,6 +271,13 @@ class TelegramAgent:
             for u in ups:
                 offset = u.get("update_id", offset - 1) + 1
                 _write_offset(offset)
+                cq = u.get("callback_query")
+                if cq:                                   # toque de botón (propuesta)
+                    try:
+                        await self._on_callback(cq)
+                    except Exception as e:
+                        logger.exception(f"[tg-agent] on_callback: {e}")
+                    continue
                 msg = u.get("message")
                 if not msg:
                     continue

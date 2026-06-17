@@ -255,18 +255,75 @@ async def propose_once() -> int:
         return 0
     props = _load_props()
     have = " ".join(p.get("aplicar", "").lower() for p in props)
-    added = 0
+    added, new_props = 0, []
     for it in items if isinstance(items, list) else []:
         ap = (it.get("aplicar") or "").strip()
         if len(ap) < 8 or ap.lower()[:30] in have:
             continue
-        props.append({"id": f"{int(time.time()*1000)}{added}", "obs": (it.get("obs") or "").strip(),
-                      "aplicar": ap, "estado": "pendiente", "ts": time.time()})
+        p = {"id": f"{int(time.time()*1000)}{added}", "obs": (it.get("obs") or "").strip(),
+             "aplicar": ap, "estado": "pendiente", "ts": time.time(), "pushed": False}
+        props.append(p)
+        new_props.append(p)
         have += " " + ap.lower()
         added += 1
     if added:
         _save_props(props)
+        for p in new_props:                               # empuja cada nueva al móvil con botones
+            await _push_proposal_to_telegram(p)
+            p["pushed"] = True
+        _save_props(props)
     return added
+
+
+_REWORK = (
+    "José ha pedido REFORMULAR esta sugerencia de mejora de su perfil. Reescríbela con OTRAS palabras, "
+    "manteniendo el fondo, más natural o más concreta. Devuelve SOLO la frase final en tercera persona, "
+    "una sola línea, sin comillas.\n"
+)
+
+
+async def _push_proposal_to_telegram(p: dict) -> None:
+    """Empuja una propuesta al móvil con botones inline (Aprobar / Rechazar / Reformular)."""
+    try:
+        import telegram
+        obs = (p.get("obs") or "").strip()
+        text = "🌱 Propuesta de Jarvis\n" + (obs + "\n\n" if obs else "") + "➕ " + (p.get("aplicar") or "")
+        kb = {"inline_keyboard": [[
+            {"text": "✅ Aprobar", "callback_data": f"prop:{p['id']}:aprobar"},
+            {"text": "❌ Rechazar", "callback_data": f"prop:{p['id']}:rechazar"},
+            {"text": "✏️ Reformular", "callback_data": f"prop:{p['id']}:reformular"},
+        ]]}
+        await telegram.send(text, reply_markup=kb)
+    except Exception as e:
+        logger.warning(f"[curator] push telegram: {e}")
+
+
+async def rework_requested() -> int:
+    """Reprocesa las propuestas que José pidió 'reformular' (estado revision_requested):
+    pide al LLM una versión distinta, crea una nueva pendiente (y la empuja), y marca la
+    vieja como superseded. Cierra el bucle de aprobaciones (robado de Paperclip)."""
+    props = _load_props()
+    pend = [p for p in props if p.get("estado") == "revision_requested"]
+    if not pend:
+        return 0
+    n = 0
+    for old in pend:
+        out = await _llm(_REWORK + f"Observación: {old.get('obs','')}\nFrase original: {old.get('aplicar','')}")
+        first = ""
+        if out:
+            ls = out.strip().strip('"').splitlines()
+            first = ls[0].strip() if ls else ""
+        ap = re.sub(r"^[\s\-•*\d.)]+", "", first).strip()
+        old["estado"] = "superseded"
+        if len(ap) >= 8:
+            np = {"id": f"{int(time.time()*1000)}{n}", "obs": old.get("obs", ""), "aplicar": ap,
+                  "estado": "pendiente", "ts": time.time(), "pushed": False}
+            props.append(np)
+            await _push_proposal_to_telegram(np)
+            np["pushed"] = True
+            n += 1
+    _save_props(props)
+    return n
 
 
 class Curator:
@@ -293,6 +350,9 @@ class Curator:
                     p = await propose_once()
                     if p:
                         logger.info(f"[curator] {p} propuestas de mejora nuevas (pendientes de aprobar)")
+                r = await rework_requested()              # cada ciclo: responde a los "reformular" de José
+                if r:
+                    logger.info(f"[curator] {r} propuestas reformuladas y reenviadas")
                 if self._n % CONSOLIDATE_EVERY == 0:      # ~1 vez al día: limpia y compacta aprendido.md
                     a, b = await consolidate_once()
                     if b != a:

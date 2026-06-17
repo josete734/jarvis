@@ -8,7 +8,7 @@
 {% if propuestas %}
 <section>
   <h2>🌱 Propuestas de Jarvis ({{ propuestas|length }})</h2>
-  <p style="color:#888;font-size:.9em">Lo que Jarvis ha aprendido de ti y sugiere recordar. Si apruebas, se añade a tu perfil.</p>
+  <p style="color:#888;font-size:.9em">Lo que Jarvis ha aprendido de ti y sugiere recordar. Si apruebas, se añade a tu perfil. También te llegan por Telegram con botones.</p>
   {% for p in propuestas %}
   <div style="border:1px solid #2a3140;border-radius:10px;padding:12px 14px;margin:10px 0;background:rgba(255,255,255,.02)">
     {% if p.obs %}<div style="color:#aab4c0;font-size:.9em;margin-bottom:6px">{{ p.obs }}</div>{% endif %}
@@ -17,6 +17,23 @@
       <input type="password" name="password" placeholder="contraseña" required>
       <button name="accion" value="aprobar">Aprobar</button>
       <button name="accion" value="rechazar" style="opacity:.7">Rechazar</button>
+      <button name="accion" value="reformular" style="opacity:.7">Reformular</button>
+    </form>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if revisiones %}
+<section>
+  <h2>↩️ Cambios recientes del perfil</h2>
+  <p style="color:#888;font-size:.9em">Cada aprobación queda registrada y es reversible. "Deshacer" devuelve el perfil a como estaba antes de ese cambio.</p>
+  {% for r in revisiones %}
+  <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid #2a3140;border-radius:8px;padding:8px 12px;margin:6px 0;background:rgba(255,255,255,.02)">
+    <div style="font-size:.95em"><span style="color:#7e8b99">{{ r.time }}</span> &nbsp; ➕ {{ r.changed }}</div>
+    <form method="post" action="/propuesta/rollback/{{ r.id }}" class="inline" style="display:flex;gap:6px;align-items:center">
+      <input type="password" name="password" placeholder="contraseña" required>
+      <button style="opacity:.8">Deshacer</button>
     </form>
   </div>
   {% endfor %}

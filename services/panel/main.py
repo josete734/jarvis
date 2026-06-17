@@ -10,6 +10,7 @@ editor de las personas, toggle de tools y de "no molestar".
 Pendiente: dashboard de latencias por etapa (depende de la voz).
 """
 
+import hmac
 import html
 import json
 import os
@@ -20,7 +21,7 @@ from pathlib import Path
 import aiohttp
 import yaml
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -64,7 +65,8 @@ templates = Jinja2Templates(directory="templates")
 async def identity(request: Request, call_next):
     # /hud y /api/hud: kiosko de solo-lectura en el monitor local (sin login).
     if request.url.path in ("/health", "/favicon.ico", "/hud", "/api/hud", "/api/agenda",
-                            "/api/briefing", "/spotify/login", "/spotify/callback"):
+                            "/api/briefing", "/spotify/login", "/spotify/callback",
+                            "/api/propuesta/decision"):     # interno: auth por EVENTS_SECRET
         return await call_next(request)
     # Identidad por dos vías, ambas verificadas contra PANEL_ALLOWED_USERS (fail-closed):
     #   - Tailscale-User-Login: acceso por el tailnet (`tailscale serve`).
@@ -592,6 +594,7 @@ async def favicon():
 
 
 PROPS_FILE = Path("/logs/propuestas.json")
+REVS_FILE = Path("/logs/config_revisions.json")   # revisiones del perfil (para rollback)
 
 
 def _propuestas_pendientes() -> list:
@@ -602,32 +605,152 @@ def _propuestas_pendientes() -> list:
         return []
 
 
-@app.post("/propuesta/{pid}")
-async def propuesta_accion(pid: str, accion: str = Form(...), password: str = Form("")):
-    """Aprobar (lo aprendido se añade al perfil de José) o rechazar una propuesta de mejora."""
-    if not _check_password(password):
-        return HTMLResponse("Contraseña incorrecta", status_code=403)
+def _load_props() -> list:
     try:
-        props = json.loads(PROPS_FILE.read_text(encoding="utf-8"))
+        return json.loads(PROPS_FILE.read_text(encoding="utf-8"))
     except Exception:
-        props = []
-    for p in props:
-        if p.get("id") == pid and p.get("estado") == "pendiente":
-            if accion == "aprobar":
-                perfil = PERSONA_DIR / "perfil_usuario.md"
-                try:
-                    cur = perfil.read_text(encoding="utf-8") if perfil.exists() else "# Perfil de José\n"
-                    perfil.write_text(cur.rstrip() + "\n- " + p.get("aplicar", "") + "\n", encoding="utf-8")
-                except Exception as e:
-                    return HTMLResponse(f"Error al aplicar: {e}", status_code=500)
-                p["estado"] = "aprobada"
-            else:
-                p["estado"] = "rechazada"
-            break
+        return []
+
+
+def _save_props(props: list) -> None:
     try:
-        PROPS_FILE.write_text(json.dumps(props, ensure_ascii=False), encoding="utf-8")
+        tmp = PROPS_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(props, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, PROPS_FILE)
     except Exception:
         pass
+
+
+# --- revisiones del perfil con rollback (robado de Paperclip agent_config_revisions) ---
+def _load_revs() -> list:
+    try:
+        return json.loads(REVS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def _save_revs(revs: list) -> None:
+    try:
+        tmp = REVS_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(revs, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, REVS_FILE)
+    except Exception:
+        pass
+
+
+def _record_revision(target: str, source: str, changed: str, before: str, after: str) -> None:
+    revs = _load_revs()
+    revs.append({"id": str(int(time.time() * 1000)), "target": target, "source": source,
+                 "changed": changed, "before": before, "after": after, "ts": time.time()})
+    _save_revs(revs[-50:])
+
+
+def _recent_revisions(n: int = 6) -> list:
+    """Últimas revisiones del perfil, para ofrecer 'deshacer' en el panel."""
+    revs = [r for r in _load_revs() if r.get("target") == "perfil_usuario.md"]
+    out = []
+    for r in reversed(revs[-30:]):
+        out.append({"id": r["id"], "changed": (r.get("changed") or "")[:90],
+                    "time": time.strftime("%d %b %H:%M", time.localtime(r.get("ts", 0)))})
+        if len(out) >= n:
+            break
+    return out
+
+
+# --- audit log inmutable (robado de Paperclip activity_log) ---
+def _audit(actor: str, action: str, entity_type: str, entity_id: str, details: dict | None = None) -> None:
+    try:
+        conn = sqlite3.connect(EVENTS_DB)
+        try:
+            conn.execute("CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                         " ts REAL, actor TEXT, action TEXT, entity_type TEXT, entity_id TEXT, details TEXT)")
+            conn.execute("CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit_log "
+                         "BEGIN SELECT RAISE(ABORT, 'audit_log es inmutable'); END")
+            conn.execute("CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit_log "
+                         "BEGIN SELECT RAISE(ABORT, 'audit_log es inmutable'); END")
+            conn.execute("INSERT INTO audit_log(ts, actor, action, entity_type, entity_id, details)"
+                         " VALUES (?,?,?,?,?,?)",
+                         (time.time(), actor, action, entity_type, entity_id,
+                          json.dumps(details or {}, ensure_ascii=False)))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+def _events_authorized(request: Request) -> bool:
+    if not EVENTS_SECRET:
+        return False
+    return hmac.compare_digest(request.headers.get("X-Jarvis-Events-Secret", ""), EVENTS_SECRET)
+
+
+def _apply_decision(pid: str, accion: str, actor: str = "jose") -> dict:
+    """Aplica una decisión sobre una propuesta (única fuente de verdad para panel y Telegram).
+    aprobar -> revisión + append al perfil + audit; rechazar/reformular -> estado + audit."""
+    props = _load_props()
+    target = next((p for p in props if p.get("id") == pid and p.get("estado") == "pendiente"), None)
+    if not target:
+        return {"status": "error", "mensaje": "propuesta no encontrada o ya resuelta"}
+    if accion == "aprobar":
+        perfil = PERSONA_DIR / "perfil_usuario.md"
+        try:
+            before = perfil.read_text(encoding="utf-8") if perfil.exists() else "# Perfil de José (evolutivo)\n"
+            after = before.rstrip() + "\n- " + target.get("aplicar", "") + "\n"
+            perfil.write_text(after, encoding="utf-8")
+        except Exception as e:
+            return {"status": "error", "mensaje": str(e)}
+        _record_revision("perfil_usuario.md", f"proposal:{pid}", target.get("aplicar", ""), before, after)
+        target["estado"] = "aprobada"
+        _audit(actor, "proposal.approved", "proposal", pid, {"aplicar": target.get("aplicar", "")})
+    elif accion == "rechazar":
+        target["estado"] = "rechazada"
+        _audit(actor, "proposal.rejected", "proposal", pid, {"aplicar": target.get("aplicar", "")})
+    elif accion == "reformular":
+        target["estado"] = "revision_requested"
+        _audit(actor, "proposal.revision_requested", "proposal", pid, {"aplicar": target.get("aplicar", "")})
+    else:
+        return {"status": "error", "mensaje": "acción inválida"}
+    _save_props(props)
+    return {"status": "ok", "estado": target["estado"]}
+
+
+@app.post("/propuesta/{pid}")
+async def propuesta_accion(pid: str, accion: str = Form(...), password: str = Form("")):
+    """Aprobar/rechazar/reformular desde el panel web (segundo factor: contraseña)."""
+    if not _check_password(password):
+        return HTMLResponse("Contraseña incorrecta", status_code=403)
+    _apply_decision(pid, accion, actor="jose")
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/api/propuesta/decision")
+async def propuesta_decision(request: Request):
+    """Endpoint interno (lo llama el agente de Telegram). Auth por EVENTS_SECRET."""
+    if not _events_authorized(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    data = await request.json()
+    res = _apply_decision((data.get("pid") or "").strip(), (data.get("accion") or "").strip(),
+                          actor="telegram")
+    return JSONResponse(res, status_code=200 if res.get("status") == "ok" else 400)
+
+
+@app.post("/propuesta/rollback/{rev_id}")
+async def propuesta_rollback(rev_id: str, password: str = Form("")):
+    """Deshace un cambio del perfil reaplicando el snapshot 'before' de una revisión."""
+    if not _check_password(password):
+        return HTMLResponse("Contraseña incorrecta", status_code=403)
+    rev = next((r for r in _load_revs()
+                if r.get("id") == rev_id and r.get("target") == "perfil_usuario.md"), None)
+    if rev:
+        perfil = PERSONA_DIR / "perfil_usuario.md"
+        try:
+            cur = perfil.read_text(encoding="utf-8") if perfil.exists() else ""
+            perfil.write_text(rev["before"], encoding="utf-8")
+            _record_revision("perfil_usuario.md", f"rollback:{rev_id}", "(deshacer)", cur, rev["before"])
+            _audit("jose", "profile.config_rolled_back", "revision", rev_id, {})
+        except Exception:
+            pass
     return RedirectResponse("/", status_code=303)
 
 
@@ -636,6 +759,7 @@ async def index(request: Request):
     ctx = await _live_context()
     ctx.update({"request": request, "user": request.state.user,
                 "personas": _personas(), "propuestas": _propuestas_pendientes(),
+                "revisiones": _recent_revisions(),
                 "tools": yaml.safe_load(TOOLS_YAML.read_text(encoding="utf-8")).get("tools", {})})
     # Starlette >=0.29: request va primero (firma nueva)
     return templates.TemplateResponse(request, "index.html", ctx)
