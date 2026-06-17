@@ -77,6 +77,8 @@ def _run(rid: str, tema: str) -> None:
         f"Si no encuentras nada fiable, dilo en una frase."
     )
     cmd = [CLAUDE, "-p", prompt, "--output-format", "text", "--allowedTools", *ALLOWED]
+    if GUARD_SETTINGS:                          # mismo guardián que /do: bloquea leer secretos (.env, claves)
+        cmd += ["--settings", GUARD_SETTINGS]
     if MODEL:
         cmd += ["--model", MODEL]
     t0 = time.time()

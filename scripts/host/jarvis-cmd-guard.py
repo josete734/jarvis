@@ -42,6 +42,16 @@ LETHAL = [
 ]
 _RE = [re.compile(p, re.IGNORECASE) for p in LETHAL]
 
+# Ficheros con SECRETOS: ni investigar ni encargar tienen por qué leerlos/tocarlos.
+# Fail-closed para cualquier herramienta (Read/Edit/Glob/Grep/Write/Bash) que los
+# referencie -> cierra la exfiltración de credenciales vía una tarea delegada
+# (o un prompt-injection). .env.example (plantilla sin secretos) sí se permite.
+SECRET_RE = re.compile(
+    r"\.env(?!\.example)\b|\.env$|/\.ssh/|\bid_ed25519\b|\bid_rsa\b|\.restic-pass"
+    r"|spotify_refresh|/root/|/etc/(shadow|sudoers)|\.npy\b",
+    re.IGNORECASE,
+)
+
 
 def _log(decision: str, cmd: str, rule: str = "") -> None:
     try:
@@ -57,9 +67,24 @@ def main() -> int:
         data = json.load(sys.stdin)
     except Exception:
         return 0                                            # no parseable -> no bloquear (capa extra)
-    if (data.get("tool_name") or "") not in ("Bash", "bash"):
+    tool = data.get("tool_name") or ""
+    ti = data.get("tool_input") or {}
+
+    # 1) Guardia de SECRETOS (todas las herramientas): bloquea acceso a .env, claves,
+    #    restic-pass, /root, biometría .npy... en file_path/pattern/glob/command/edits.
+    blob = " ".join(str(ti.get(k, "")) for k in
+                    ("file_path", "path", "pattern", "glob", "command", "old_string", "new_string"))
+    if SECRET_RE.search(blob):
+        _log("BLOCK-SECRET", blob, "secret-path")
+        sys.stderr.write(
+            "BLOQUEADO por jarvis-cmd-guard: las tareas delegadas no pueden leer ni tocar "
+            "ficheros con secretos (.env, claves SSH, restic-pass, etc.). Si hace falta, que lo haga el usuario.\n")
+        return 2
+
+    # 2) Deny-list de comandos letales (solo Bash).
+    if tool not in ("Bash", "bash"):
         return 0
-    cmd = ((data.get("tool_input") or {}).get("command") or "")
+    cmd = (ti.get("command") or "")
     if not cmd:
         return 0
     for rx in _RE:

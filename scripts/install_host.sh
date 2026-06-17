@@ -71,6 +71,7 @@ HOST_DIR="$(cd "$(dirname "$0")/host" && pwd)"
 install -o root -g root -m 0755 "$HOST_DIR/jarvis-research.py"  /usr/local/bin/jarvis-research.py
 install -o root -g root -m 0755 "$HOST_DIR/jarvis-power.sh"     /usr/local/bin/jarvis-power.sh
 install -o root -g root -m 0755 "$HOST_DIR/jarvis-cmd-guard.py" /usr/local/bin/jarvis-cmd-guard.py
+install -o "$REAL_USER" -g "$REAL_USER" -m 0644 "$HOST_DIR/jarvis-claude-settings.json" "/home/$REAL_USER/jarvis-claude-settings.json"
 install -o root -g root -m 0440 "$HOST_DIR/jarvis-actions.sudoers" /etc/sudoers.d/jarvis-actions
 visudo -cf /etc/sudoers.d/jarvis-actions || { echo "sudoers inválido"; exit 1; }
 for unit in jarvis-research.service jarvis-kiosk.service jarvis-kiosk-restart.service \
