@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Jarvis Glasses</string>
+
+    <!-- Notificacion del servicio en primer plano -->
+    <string name="notif_channel_name">Jarvis</string>
+    <string name="notif_channel_desc">Escucha de la palabra de activacion</string>
+    <string name="notif_title">Jarvis en escucha</string>
+    <string name="notif_text">Di \"Hey Mycroft\" a tus gafas</string>
+
+    <!-- Estados del servicio -->
+    <string name="state_idle">Inactivo</string>
+    <string name="state_listening">Escuchando</string>
+    <string name="state_recording">Grabando orden</string>
+    <string name="state_sending">Enviando</string>
+    <string name="state_playing">Reproduciendo respuesta</string>
+
+    <!-- Pantalla de ajustes -->
+    <string name="settings_title">Ajustes</string>
+    <string name="settings_server_url">URL del servidor</string>
+    <string name="settings_secret">Secreto</string>
+    <string name="settings_threshold">Umbral de deteccion</string>
+    <string name="settings_save">Guardar</string>
+    <string name="settings_start">Iniciar servicio</string>
+    <string name="settings_stop">Detener servicio</string>
+
+    <!-- Estado del enrutado del micro -->
+    <string name="mic_glasses">Micro: gafas</string>
+    <string name="mic_phone">Micro: telefono</string>
+</resources>
