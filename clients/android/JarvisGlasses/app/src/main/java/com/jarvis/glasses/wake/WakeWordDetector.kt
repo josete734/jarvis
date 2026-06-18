@@ -92,42 +92,26 @@ class WakeWordDetector(
         return score >= threshold
     }
 
-    /** melspectrogram.onnx: entrada [1, N] float -> salida [1,1,T,32]; escalado x/10+2. */
+    /** melspectrogram.onnx: entrada [1, N] float -> salida con 32 mel bins en el eje final.
+     * Se lee el buffer plano (row-major, 32 contiguos) y se reparte en frames de 32, con x/10+2.
+     * Robusto ante la forma exacta ([1,1,T,32] / [T,1,1,32] / etc.). */
     private fun computeMel(audio: FloatArray): List<FloatArray> {
-        val input = OnnxTensor.createTensor(
-            env,
-            FloatBuffer.wrap(audio),
-            longArrayOf(1, audio.size.toLong())
-        )
-        input.use {
-            melSession.run(mapOf(melInputName to it)).use { result ->
-                // Salida tipica [1,1,T,32]; se aplana dinamicamente.
-                @Suppress("UNCHECKED_CAST")
-                val raw = result[0].value
-                return flattenMel(raw)
+        OnnxTensor.createTensor(
+            env, FloatBuffer.wrap(audio), longArrayOf(1, audio.size.toLong())
+        ).use { input ->
+            melSession.run(mapOf(melInputName to input)).use { result ->
+                val fb = (result[0] as OnnxTensor).floatBuffer
+                val nFrames = fb.remaining() / MEL_BINS
+                val out = ArrayList<FloatArray>(nFrames)
+                for (f in 0 until nFrames) {
+                    val frame = FloatArray(MEL_BINS)
+                    fb.get(frame)
+                    for (i in 0 until MEL_BINS) frame[i] = frame[i] / 10f + 2f
+                    out.add(frame)
+                }
+                return out
             }
         }
-    }
-
-    /** Aplana la salida del modelo mel (forma [1,1,T,32] o [1,T,32]) a lista de frames [32], con x/10+2. */
-    private fun flattenMel(raw: Any?): List<FloatArray> {
-        // Descender por las dimensiones de batch hasta llegar al eje temporal T.
-        var node: Any? = raw
-        // raw es un array anidado de FloatArray; descender mientras el elemento no sea ya [T][32].
-        while (node is Array<*> && node.isNotEmpty() && node[0] is Array<*> &&
-            (node[0] as Array<*>).isNotEmpty() && (node[0] as Array<*>)[0] is Array<*>
-        ) {
-            node = node[0]
-        }
-        @Suppress("UNCHECKED_CAST")
-        val frames = node as Array<FloatArray> // [T][32]
-        val out = ArrayList<FloatArray>(frames.size)
-        for (frame in frames) {
-            val scaled = FloatArray(frame.size)
-            for (i in frame.indices) scaled[i] = frame[i] / 10f + 2f
-            out.add(scaled)
-        }
-        return out
     }
 
     /** embedding_model.onnx: por cada ventana [1,76,32,1] produce un embedding [96]. */
@@ -165,19 +149,11 @@ class WakeWordDetector(
         )
         input.use {
             embSession.run(mapOf(embInputName to it)).use { result ->
-                // Salida tipica [1,1,1,96]; aplanar al vector de 96.
-                return flatten96(result[0].value)
+                val emb = FloatArray(EMB_DIM)
+                (result[0] as OnnxTensor).floatBuffer.get(emb)   // [1,1,1,96] -> 96 floats
+                return emb
             }
         }
-    }
-
-    /** Aplana la salida del embedding (forma [1,1,1,96] o similar) a un FloatArray[96]. */
-    private fun flatten96(raw: Any?): FloatArray {
-        var node: Any? = raw
-        while (node is Array<*> && node.isNotEmpty() && node[0] is Array<*>) {
-            node = node[0]
-        }
-        return node as FloatArray
     }
 
     /** hey_mycroft: entrada [1,16,96] con los ultimos 16 embeddings -> score [1,1]. */
@@ -195,18 +171,8 @@ class WakeWordDetector(
         )
         input.use {
             wwSession.run(mapOf(wwInputName to it)).use { result ->
-                return flattenScalar(result[0].value)
+                return (result[0] as OnnxTensor).floatBuffer.get(0)   // [1,1] -> escalar
             }
-        }
-    }
-
-    /** Extrae el score escalar de una salida [1,1] (o anidada). */
-    private fun flattenScalar(raw: Any?): Float {
-        var node: Any? = raw
-        while (node is Array<*> && node.isNotEmpty()) node = node[0]
-        return when (node) {
-            is Float -> node
-            else -> (raw as? FloatArray)?.firstOrNull() ?: 0f
         }
     }
 
