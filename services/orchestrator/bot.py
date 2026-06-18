@@ -40,11 +40,6 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMUserAggregatorParams,
 )
 from pipecat.turns.user_mute.always_user_mute_strategy import AlwaysUserMuteStrategy
-from pipecat.turns.user_turn_strategies import UserTurnStrategies
-from pipecat.turns.user_start import VADUserTurnStartStrategy
-from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
-from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
-from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.frames.frames import Frame, TranscriptionFrame
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
@@ -102,10 +97,9 @@ class TimeInjector(FrameProcessor):
             if self._turns % 8 == 0:               # recarga aprendido.md/perfil en vivo (aprende sin reiniciar)
                 try:
                     self._base = load_system_prompt()
-                    self._ctx.messages[0]["content"] = self._base   # persona estable salvo recarga
                 except Exception:
                     pass
-            self._ctx.messages[1]["content"] = _momento_actual()    # solo se refresca el reloj (no rompe la caché de la persona)
+            self._ctx.messages[0]["content"] = self._base + _momento_actual()
         await self.push_frame(frame, direction)
 
 
@@ -218,29 +212,19 @@ async def main() -> None:
     schemas = register_tools(llm, security)
 
     base_system = load_system_prompt()
-    # Persona ESTABLE en messages[0] (prefijo cacheable; no cambia turno a turno) y la
-    # hora volátil en messages[1] -> la caché del prompt no se invalida por el reloj.
     context = LLMContext(
-        messages=[{"role": "system", "content": base_system},
-                  {"role": "system", "content": _momento_actual()}],
+        messages=[{"role": "system", "content": base_system + _momento_actual()}],
         tools=ToolsSchema(standard_tools=schemas) if schemas else None,
     )
-    # Endpointing SEMÁNTICO: el VAD (stop_secs bajo) solo DISPARA la evaluación; smart-turn v3
-    # (modelo de audio, ~12 ms CPU, español, incluido en el paquete) decide si de verdad
-    # terminaste de hablar o haces una pausa para pensar -> recorta la espera fija de cada
-    # respuesta sin cortarte. SMART_TURN_MAX_SECS es el techo de espera.
-    _smart_turn = LocalSmartTurnAnalyzerV3(
-        params=SmartTurnParams(stop_secs=float(os.getenv("SMART_TURN_MAX_SECS", "2.5"))))
     aggregators = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
-            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=float(os.getenv("VAD_STOP_SECS", "0.25")))),  # solo dispara; smart-turn confirma el fin de turno real
-            user_turn_strategies=UserTurnStrategies(
-                start=[VADUserTurnStartStrategy()],
-                stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=_smart_turn)],
-            ),
-            # DISABLE_BARGE_IN=true silencia al usuario mientras el bot habla (sin AEC HW).
-            # Con el Anker (AEC hardware) barge-in activo -> se le puede cortar hablando.
+            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=float(os.getenv("VAD_STOP_SECS", "0.7")))),  # 0.2 cortaba tarde -> segmentos ~20s; 0.7 cierra el turno antes (raíz de "me escucha mal")
+            # smart-turn v3.2 is the default stop strategy in 1.3.0 — do not disable.
+            # DISABLE_BARGE_IN=true silencia al usuario mientras el bot habla (evita la
+            # autointerrupción por eco cuando NO hay AEC hardware). Con el Anker (AEC
+            # hardware) se deja barge-in activo (DISABLE_BARGE_IN=false) -> se le puede
+            # cortar hablando.
             user_mute_strategies=(
                 [AlwaysUserMuteStrategy()]
                 if os.getenv("DISABLE_BARGE_IN", "false").lower() == "true"
