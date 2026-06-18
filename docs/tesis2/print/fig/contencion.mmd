@@ -1,0 +1,11 @@
+%%{init: {'theme':'base','themeVariables':{'lineColor':'#C9A227'}}}%%
+flowchart TB
+  a["Acción de alto impacto"] --> c1["1 · Capability declarada<br/>fail-closed · allow-list"]
+  c1 --> c2["2 · Entorno aislado<br/>worktree / contenedor"]
+  c2 --> c3["3 · Credencial efímera<br/>JWT acotado · expira"]
+  c3 --> c4["4 · Confirmación humana<br/>(en el umbral)"]
+  c4 --> ej["Ejecución"]
+  classDef l fill:#16315c,stroke:#C9A227,color:#F4F1E8;
+  classDef g fill:#C9A227,stroke:#0C1A33,color:#0C1A33;
+  class c1,c2,c3,c4 l;
+  class a,ej g;

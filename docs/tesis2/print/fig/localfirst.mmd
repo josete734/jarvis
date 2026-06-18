@@ -1,0 +1,14 @@
+%%{init: {'theme':'base','themeVariables':{'lineColor':'#C9A227'}}}%%
+flowchart TB
+  subgraph CF["Modelo nube-first"]
+    direction LR
+    cs["Servidor de terceros<br/>copia canónica"] --> cc["Cliente<br/>(terminal)"]
+  end
+  subgraph LF["Modelo local-first"]
+    direction LR
+    ld["Dispositivo del usuario<br/>copia autoritativa"] <--> lr["Red<br/>sincronización y respaldo (auxiliar)"]
+  end
+  classDef cloud fill:#8a8a8a,stroke:#0C1A33,color:#ffffff;
+  classDef local fill:#16315c,stroke:#C9A227,color:#F4F1E8;
+  class cs,cc cloud;
+  class ld,lr local;

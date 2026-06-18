@@ -1,0 +1,33 @@
+---
+title: "Democratización tecnológica y agéntica"
+subtitle: "Diseño, implementación y evaluación de un sistema inteligente multimodal para asistencia personal ejecutado en hardware de consumo"
+author: ["José Ángel Castillo Díez"]
+date: "Junio de 2026"
+lang: es-ES
+mainfont: "TeX Gyre Pagella"
+sansfont: "TeX Gyre Heros"
+monofont: "DejaVu Sans Mono"
+documentclass: report
+classoption: [oneside]
+toc: true
+toc-own-page: true
+toc-title: "Índice"
+numbersections: true
+secnumdepth: 2
+colorlinks: true
+linkcolor: RoyalBlue
+urlcolor: RoyalBlue
+toccolor: black
+titlepage: true
+titlepage-logo: "fig/cover.pdf"
+logo-width: "150mm"
+titlepage-color: "0C1A33"
+titlepage-text-color: "F4F1E8"
+titlepage-rule-color: "C9A227"
+titlepage-rule-height: 10
+titlepage-top-rule-height: 0
+book: true
+listings: false
+geometry: "top=2.5cm,bottom=2.5cm,left=3cm,right=2.5cm"
+abstract-title: "Resumen"
+---

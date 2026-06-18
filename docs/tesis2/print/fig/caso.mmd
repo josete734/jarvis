@@ -1,0 +1,18 @@
+%%{init: {'theme':'base','themeVariables':{'lineColor':'#C9A227'}}}%%
+flowchart LR
+  subgraph LOCAL["Perímetro local · homelab"]
+    direction TB
+    voz["Voz local<br/>wake-word · STT · TTS"]
+    tools["Herramientas<br/>calendario · domótica · notas"]
+    tg["Canal de texto<br/>(mensajería)"]
+    orq["Orquestador<br/>contenedores Compose"]
+    voz --> orq
+    tools --- orq
+    tg --- orq
+  end
+  orq -->|"intención"| llm["Cerebro · LLM<br/>local (cuantizado) o delegado"]
+  llm -->|"decisión / acción"| orq
+  classDef l fill:#16315c,stroke:#C9A227,color:#F4F1E8;
+  classDef g fill:#C9A227,stroke:#0C1A33,color:#0C1A33;
+  class voz,tools,tg,orq l;
+  class llm g;

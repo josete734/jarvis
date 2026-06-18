@@ -1,0 +1,9 @@
+%%{init: {'theme':'base','themeVariables':{'lineColor':'#C9A227'}}}%%
+flowchart TB
+  d["Datos del homelab"] --> c1["Copia 1 · NVMe interno"]
+  d --> c2["Copia 2 · disco externo<br/>(otro soporte)"]
+  d --> c3["Copia 3 · OFF-SITE<br/>remoto · cifrado en cliente"]
+  classDef l fill:#16315c,stroke:#C9A227,color:#F4F1E8;
+  classDef g fill:#C9A227,stroke:#0C1A33,color:#0C1A33;
+  class d,c1,c2 l;
+  class c3 g;

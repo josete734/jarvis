@@ -1,0 +1,11 @@
+%%{init: {'theme':'base','themeVariables':{'lineColor':'#C9A227'}}}%%
+flowchart TB
+  serv["Servicios del homelab<br/>(solo 127.0.0.1)"] --> rp["Reverse proxy + TLS<br/>punto único · :443"]
+  rp --> vpn["VPN · WireGuard<br/>uso personal (nada público)"]
+  rp --> tun["Túnel de salida<br/>público sin abrir puertos"]
+  vpn --> op["Operador"]
+  tun --> net["Internet<br/>(solo lo genuinamente público)"]
+  classDef l fill:#16315c,stroke:#C9A227,color:#F4F1E8;
+  classDef g fill:#C9A227,stroke:#0C1A33,color:#0C1A33;
+  class serv,rp,vpn,tun l;
+  class op,net g;

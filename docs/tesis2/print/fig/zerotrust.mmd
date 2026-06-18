@@ -1,0 +1,11 @@
+%%{init: {'theme':'base','themeVariables':{'lineColor':'#C9A227'}}}%%
+flowchart LR
+  u["Usuario<br/>MFA · passkeys"] --> px["Proxy de identidad<br/>zero-trust · OAuth 2.0 · JWT"]
+  idp["Proveedor<br/>de identidad"] --- px
+  px -->|"identidad verificada"| s1["Servicio A"]
+  px -->|"identidad verificada"| s2["Servicio B"]
+  px -->|"identidad verificada"| s3["Servicio C"]
+  classDef l fill:#16315c,stroke:#C9A227,color:#F4F1E8;
+  classDef g fill:#C9A227,stroke:#0C1A33,color:#0C1A33;
+  class u,s1,s2,s3 l;
+  class px,idp g;
