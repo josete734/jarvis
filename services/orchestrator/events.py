@@ -13,12 +13,15 @@ runs arbitrary workflow code) must not be able to toggle DND or trigger TTS.
 Fail-closed: if EVENTS_SECRET is unset, those endpoints are refused.
 """
 
+import asyncio
 import hmac
 import json
 import os
-import sqlite3
+import subprocess
 import time
+import sqlite3
 from pathlib import Path
+from urllib.parse import quote
 
 from aiohttp import web
 from loguru import logger
@@ -29,6 +32,26 @@ DB_PATH = Path("/logs/events.db")
 SECRET = os.getenv("EVENTS_SECRET", "")
 _conn: sqlite3.Connection | None = None
 _gate = None                     # ProactiveGate (Fase B): routing voz/Telegram por presencia
+_glasses = None                  # cerebro propio del canal "gafas/app iOS" (historia aislada)
+
+
+def _brain():
+    """Cerebro de texto reutilizable (mismas tools+memoria que Telegram), instancia
+    dedicada al canal de la app/gafas para no mezclar su historial con el de Telegram."""
+    global _glasses
+    if _glasses is None:
+        from telegram_agent import TelegramAgent
+        _glasses = TelegramAgent()
+    return _glasses
+
+
+def _synth_sync(text: str) -> bytes:
+    """Sintetiza con la voz local de Jarvis (Piper carlfm-high) -> WAV bytes."""
+    voice = os.getenv("PIPER_VOICE", "es_ES-carlfm-high")
+    out = "/tmp/glasses_tts.wav"
+    subprocess.run(["/usr/local/bin/piper", "--model", f"/models/piper/{voice}.onnx",
+                    "--output_file", out], input=text.encode(), capture_output=True, timeout=30)
+    return Path(out).read_bytes()
 
 
 def set_gate(gate) -> None:
@@ -132,13 +155,58 @@ async def start(task, security, *, port: int = 8070) -> None:
         log_event("dnd", {"enabled": security.dnd})
         return web.json_response({"dnd": security.dnd})
 
+    async def ask(request: web.Request) -> web.Response:
+        """Canal app/gafas (texto): {text} -> respuesta del cerebro {reply}.
+        Para clientes que hacen STT on-device (Apple Speech) y TTS propio."""
+        if not _authorized(request):
+            return web.json_response({"error": "unauthorized"}, status=401)
+        data = await request.json()
+        text = (data.get("text") or "").strip()
+        if not text:
+            return web.json_response({"error": "no text"}, status=400)
+        log_event("glasses_ask", {"text": text[:300]})
+        reply = await _brain()._think(text)
+        return web.json_response({"reply": reply})
+
+    async def voice(request: web.Request) -> web.Response:
+        """Canal app/gafas (voz E2E): audio crudo -> Whisper -> cerebro -> Piper carlfm
+        -> WAV con la voz de Jarvis (se reproduce por las gafas). Transcript y respuesta
+        en cabeceras (url-encoded) para depurar/mostrar en la app."""
+        if not _authorized(request):
+            return web.json_response({"error": "unauthorized"}, status=401)
+        raw = await request.read()
+        if not raw:
+            return web.json_response({"error": "no audio"}, status=400)
+        path = f"/tmp/glasses_in_{int(time.time()*1000)}"
+        Path(path).write_bytes(raw)
+        import voice_notes
+        try:
+            text = await voice_notes.transcribe(path)
+        except Exception as e:
+            logger.warning(f"[gafas] transcripción: {e}")
+            text = ""
+        finally:
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+        if not text:
+            return web.json_response({"error": "no_speech"}, status=422)
+        log_event("glasses_voice", {"text": text[:300]})
+        reply = await _brain()._think(text)
+        wav = await asyncio.to_thread(_synth_sync, reply)
+        return web.Response(body=wav, content_type="audio/wav",
+                            headers={"X-Transcript": quote(text[:300]), "X-Reply": quote(reply[:500])})
+
     async def health(_: web.Request) -> web.Response:
         return web.json_response({"ok": True})
 
-    app = web.Application()
+    app = web.Application(client_max_size=20 * 1024 * 1024)   # audios de la app hasta ~20MB
     app.router.add_post("/event/presence", presence)
     app.router.add_post("/event/say", say)
     app.router.add_post("/dnd", dnd)
+    app.router.add_post("/ask", ask)
+    app.router.add_post("/voice", voice)
     app.router.add_get("/health", health)
 
     runner = web.AppRunner(app)
