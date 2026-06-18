@@ -104,7 +104,7 @@ services:
       - STT_BASE_URL=http://stt-parakeet:5092/v1   # puerto verificado del servidor parakeet
       - WHISPER_MODEL=medium                       # medium INT8: RTF 0.22 medido -> ~0.9s/frase corta (los 6-7s previos eran por segmentos ~20s del bug stop_secs, ya resuelto con smart-turn). Mejor calidad es-ES (tildes/puntuación). small=RTF0.08; large-v3-turbo=RTF0.31 sin ganancia visible
       - WHISPER_CPU_THREADS=12                      # CPU ociosa (LLM en nube) -> usa los 12 hilos
-      - PIPER_VOICE=es_ES-davefx-medium            # respaldo offline
+      - PIPER_VOICE=es_ES-carlfm-high              # voz castellana "high" (109MB, mayor resolución que las medium); elegida por José. davefx/sharvard-medium como alternativas
       # --- Voz: Piper local (davefx-medium, es-ES). ElevenLabs retirado: 100% self-hosted ---
       - TTS_BACKEND=piper                          # local (ElevenLabs fuera; XTTS pendiente de GPU)
       - AUDIO_OUT_RATE=22050                        # nativo de Piper davefx-medium (evita remuestreo extra)

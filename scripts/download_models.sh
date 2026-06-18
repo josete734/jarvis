@@ -12,6 +12,12 @@ for f in es_ES-davefx-medium.onnx es_ES-davefx-medium.onnx.json; do
     [ -f "$MODELS/piper/$f" ] || curl -fL "$BASE/$f" -o "$MODELS/piper/$f"
 done
 
+echo "==> Piper voice es_ES-carlfm-high (voz por defecto; comunidad, no en el repo oficial)"
+CARLFM="https://huggingface.co/friyin/vits-piper-es_ES-carlfm-high/resolve/main"
+for f in es_ES-carlfm-high.onnx es_ES-carlfm-high.onnx.json; do
+    [ -f "$MODELS/piper/$f" ] || curl -fL "$CARLFM/$f" -o "$MODELS/piper/$f"
+done
+
 echo "==> openWakeWord hey_jarvis (+ shared melspectrogram/embedding models)"
 docker compose run --rm --no-deps -T orchestrator python - <<'EOF'
 import openwakeword.utils as u

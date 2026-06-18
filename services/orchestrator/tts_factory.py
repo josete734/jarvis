@@ -18,9 +18,10 @@ from pipecat.services.piper.tts import PiperTTSService, PiperTTSSettings
 
 
 def _piper():
-    logger.info("TTS: Piper local (es_ES-davefx-medium)")
+    voice = os.getenv("PIPER_VOICE", "es_ES-davefx-medium")
+    logger.info(f"TTS: Piper local ({voice})")
     return PiperTTSService(
-        settings=PiperTTSSettings(voice=os.getenv("PIPER_VOICE", "es_ES-davefx-medium")),
+        settings=PiperTTSSettings(voice=voice),
         download_dir=Path("/models/piper"),
     )
 
