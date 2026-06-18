@@ -102,7 +102,7 @@ services:
       - STT_BACKEND=whisper                        # Whisper small (multilingüe ES); Parakeet de la imagen era solo-inglés (regresión)
       - STT_TUNED=true                             # TunedWhisperSTTService: tuning es-ES (initial_prompt+beam5+condition_off); medido mejor en voz real
       - STT_BASE_URL=http://stt-parakeet:5092/v1   # puerto verificado del servidor parakeet
-      - WHISPER_MODEL=small                        # medium medido EN VIVO 6-7s (segmentos ~20s x RTF0.32) -> inviable en CPU; small+tuning va fino (~0.5s). Modelo grande = via iGPU/OpenVINO
+      - WHISPER_MODEL=medium                       # medium INT8: RTF 0.22 medido -> ~0.9s/frase corta (los 6-7s previos eran por segmentos ~20s del bug stop_secs, ya resuelto con smart-turn). Mejor calidad es-ES (tildes/puntuación). small=RTF0.08; large-v3-turbo=RTF0.31 sin ganancia visible
       - WHISPER_CPU_THREADS=12                      # CPU ociosa (LLM en nube) -> usa los 12 hilos
       - PIPER_VOICE=es_ES-davefx-medium            # respaldo offline
       # --- Voz: Piper local (davefx-medium, es-ES). ElevenLabs retirado: 100% self-hosted ---
